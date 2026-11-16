@@ -3,6 +3,11 @@
 Versions follow the scheme of the original project: `YYYY.M.D.B`, the release date plus a build
 number for the day.
 
+## 2026.11.16.0
+
+- Add the Health & wellbeing Marketplace category.
+- Include the existing MIT license and attribution in the HACS installation ZIP.
+
 ## 2026.10.31.0
 
 - Notification titles, messages, and the mobile **Mark taken** action now follow
