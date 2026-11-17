@@ -2,7 +2,7 @@
 <h1 align="center">Medication Monitoring</h1>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/seb5594/hass-medication_tracker-integration/main/custom_components/medication_monitoring/brand/icon@2x.png" alt="Medication Monitoring" width="160" height="160">
+  <img src="https://raw.githubusercontent.com/seb5594/hass-medication_monitoring-integration/main/custom_components/medication_monitoring/brand/icon@2x.png" alt="Medication Monitoring" width="160" height="160">
 </p>
 
 ---
@@ -10,14 +10,14 @@
 <p align="center">
   <a href="https://paypal.me/seb5594"><img src="https://img.shields.io/static/v1?label=Support&amp;message=PayPal&amp;color=0070BA&amp;logo=paypal&amp;logoColor=white&amp;style=for-the-badge" alt="PayPal" height="40"></a>
   <a href="https://buymeacoffee.com/seb5594"><img src="https://img.shields.io/static/v1?label=Support&amp;message=Buy%20Me%20a%20Coffee&amp;color=FFDD00&amp;logo=buy-me-a-coffee&amp;logoColor=black&amp;style=for-the-badge" alt="Buy Me a Coffee" height="40"></a><br>
-  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=seb5594&amp;repository=hass-medication_tracker-integration&amp;category=integration"><img src="https://img.shields.io/static/v1?label=HACS%20%C2%B7%20Marketplace&amp;message=Add%20integration&amp;color=41BDF5&amp;logo=homeassistantcommunitystore&amp;logoColor=white&amp;style=for-the-badge" alt="HACS · Marketplace" height="28"></a>
-  <a href="https://github.com/seb5594/hass-medication_tracker-integration/actions/workflows/compat.yml"><img src="https://img.shields.io/static/v1?label=home%20assistant&amp;message=%E2%89%A5%202021.12.10&amp;color=1877A5&amp;style=for-the-badge" alt="home assistant" height="28"></a>
-  <a href="https://github.com/seb5594/hass-medication_tracker-integration/releases/tag/v2026.11.17.0"><img src="https://img.shields.io/static/v1?label=version&amp;message=2026.11.17.0&amp;color=1877A5&amp;style=for-the-badge" alt="version" height="28"></a><br>
-  <a href="https://github.com/seb5594/hass-medication_tracker-integration/releases"><img src="https://img.shields.io/github/downloads/seb5594/hass-medication_tracker-integration/v2026.11.17.0/total?label=downloads&amp;color=1877A5&amp;style=flat" alt="downloads" height="20"></a>
-  <a href="https://github.com/seb5594/hass-medication_tracker-integration/issues"><img src="https://img.shields.io/github/issues/seb5594/hass-medication_tracker-integration?label=issues&amp;style=flat" alt="issues" height="20"></a>
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=seb5594&amp;repository=hass-medication_monitoring-integration&amp;category=integration"><img src="https://img.shields.io/static/v1?label=HACS%20%C2%B7%20Marketplace&amp;message=Add%20integration&amp;color=41BDF5&amp;logo=homeassistantcommunitystore&amp;logoColor=white&amp;style=for-the-badge" alt="HACS · Marketplace" height="28"></a>
+  <a href="https://github.com/seb5594/hass-medication_monitoring-integration/actions/workflows/compat.yml"><img src="https://img.shields.io/static/v1?label=home%20assistant&amp;message=%E2%89%A5%202021.12.10&amp;color=1877A5&amp;style=for-the-badge" alt="home assistant" height="28"></a>
+  <a href="https://github.com/seb5594/hass-medication_monitoring-integration/releases/tag/v2026.11.17.0"><img src="https://img.shields.io/static/v1?label=version&amp;message=2026.11.17.0&amp;color=1877A5&amp;style=for-the-badge" alt="version" height="28"></a><br>
+  <a href="https://github.com/seb5594/hass-medication_monitoring-integration/releases"><img src="https://img.shields.io/github/downloads/seb5594/hass-medication_monitoring-integration/v2026.11.17.0/total?label=downloads&amp;color=1877A5&amp;style=flat" alt="downloads" height="20"></a>
+  <a href="https://github.com/seb5594/hass-medication_monitoring-integration/issues"><img src="https://img.shields.io/github/issues/seb5594/hass-medication_monitoring-integration?label=issues&amp;style=flat" alt="issues" height="20"></a>
   <img src="https://img.shields.io/static/v1?label=tests&amp;message=5%20passed&amp;color=2F855A&amp;style=flat" alt="tests" height="20">
-  <a href="https://github.com/seb5594/hass-medication_tracker-integration/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/seb5594/hass-medication_tracker-integration/ci.yml?branch=main&amp;label=checks&amp;style=flat" alt="checks" height="20"></a>
-  <a href="https://github.com/seb5594/hass-medication_tracker-integration#license"><img src="https://img.shields.io/github/license/seb5594/hass-medication_tracker-integration?label=license&amp;style=flat" alt="license" height="20"></a>
+  <a href="https://github.com/seb5594/hass-medication_monitoring-integration/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/seb5594/hass-medication_monitoring-integration/ci.yml?branch=main&amp;label=checks&amp;style=flat" alt="checks" height="20"></a>
+  <a href="https://github.com/seb5594/hass-medication_monitoring-integration#license"><img src="https://img.shields.io/github/license/seb5594/hass-medication_monitoring-integration?label=license&amp;style=flat" alt="license" height="20"></a>
 </p>
 <!-- header:end -->
 
@@ -51,8 +51,8 @@ start at Core 2024.4.1.
 ### Via HACS as a custom repository
 
 1. Use the *HACS · Marketplace* badge above, or open **HACS → ⋮ → Custom repositories** and add
-   `https://github.com/seb5594/hass-medication_tracker-integration` as an **Integration**.
-2. Open the entry from `seb5594/hass-medication_tracker-integration` and download it.
+   `https://github.com/seb5594/hass-medication_monitoring-integration` as an **Integration**.
+2. Open the entry from `seb5594/hass-medication_monitoring-integration` and download it.
 3. Restart Home Assistant.
 
 The Community edition uses the Home Assistant domain `medication_monitoring`. The
@@ -61,21 +61,35 @@ The Community edition uses the Home Assistant domain `medication_monitoring`. Th
 
 ### Upgrade from the previous fork release or import from upstream
 
-1. Back up Home Assistant and **disable** your source tracker in **Settings → Devices & Services**.
-   Keep its configuration entry until you have verified the import.
-2. Install or update **Medication Monitoring**, then restart Home Assistant.
-3. Add **Medication Monitoring** in **Settings → Devices & Services → Add Integration**.
-   Select the disabled tracker under **Copy from a disabled legacy tracker**. Repeat for each tracker
-   you want to move.
-4. Verify your medications, stock, recent dose history, and notification settings. The import
-   copies the local data into a new tracker. The previous tracker and its saved data stay in place.
+1. Install or update **Medication Monitoring** from this repository and restart Home Assistant.
+2. Open **Settings → Devices & Services → Add Integration → Medication Monitoring**.
+   The setup detects profiles from both the original **Medication Tracker** and the previous fork,
+   including active profiles, disabled profiles, and remaining local stores from removed installations.
+   A single available profile is preselected; with multiple profiles, choose the one to import.
+   Clear the optional source field to create an empty tracker instead.
+3. Review the medication list and confirm the import. A running source is disabled automatically
+   before its data is copied, so you do not have to find and disable it first. Cancelling the preview
+   leaves it running. Repeat setup for any other profiles you want to move.
+4. Verify medications, schedules, doses, notes, stock, recent dose history (up to 90 days), and
+   notification settings. Medication IDs and custom notification templates are preserved. An imported
+   source is no longer offered, and restarting the integration never overwrites its new data with
+   the old snapshot. The previous tracker's local store is kept for rollback.
 5. Update automations to use the new entities and `medication_monitoring.*` actions.
    Replace `custom:medication-tracker-card` with `custom:medication-monitoring-card` in
    dashboard YAML, or select **Medication Monitoring** in the card picker.
 
-Home Assistant creates new devices and entities for the imported tracker. Old mobile notification
-buttons are tied to the old tracker. Keep it disabled for the imported profiles to avoid duplicate
-reminders. To roll back, disable the Community tracker before re-enabling the original.
+The import works without the old integration's code being installed. Former users can recover a
+profile only if its `medication_tracker_data_<entry_id>` store still exists in Home Assistant's
+`.storage` directory; deleted stores require a Home Assistant backup. No storage-file editing is
+needed. Back up Home Assistant before migrating.
+
+Home Assistant creates new devices and entities for the imported tracker; old entity history,
+automation references, and dashboards are not renamed automatically. Old mobile notification
+buttons are tied to the old tracker. Keep it disabled for imported profiles to avoid duplicate
+reminders. To roll back, disable Medication Monitoring before re-enabling the original.
+If an old tracker cannot unload, setup stops with an error instead of starting a second notifier;
+restart Home Assistant before retrying. A source already disabled during a failed import stays
+disabled until you explicitly re-enable it.
 
 ### Manual
 

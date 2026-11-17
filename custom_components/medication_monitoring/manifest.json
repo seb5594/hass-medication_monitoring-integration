@@ -14,9 +14,9 @@
     "frontend",
     "http"
   ],
-  "documentation": "https://github.com/seb5594/hass-medication_tracker-integration",
+  "documentation": "https://github.com/seb5594/hass-medication_monitoring-integration",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/seb5594/hass-medication_tracker-integration/issues",
+  "issue_tracker": "https://github.com/seb5594/hass-medication_monitoring-integration/issues",
   "requirements": [],
   "version": "2026.11.17.0"
 }

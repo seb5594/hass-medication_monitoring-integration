@@ -4,21 +4,26 @@
     "step": {
       "user": {
         "title": "Medication Monitoring einrichten",
-        "description": "Erstelle eine neue Medikamentenübersicht. Medikamente kannst du nach der Einrichtung über die Schaltfläche „Konfigurieren“ hinzufügen.",
+        "description": "Vorhandene Medication-Tracker-Profile aus dem Originalprojekt oder bisherigen Fork werden automatisch erkannt, auch wenn nur noch gespeicherte Daten vorhanden sind. Wähle ein Profil zur Übernahme oder lasse das Feld für eine neue, leere Übersicht frei.",
         "data": {
           "title": "Name des Trackers",
-          "legacy_entry_id": "Daten aus einem deaktivierten bisherigen Tracker übernehmen"
+          "legacy_entry_id": "Bisherigen Medication Tracker übernehmen"
         },
         "data_description": {
-          "legacy_entry_id": "Deaktiviere den bisherigen Tracker vor der Übernahme von Medikamenten, Einnahmeverlauf, Bestand und Einstellungen. Lasse das Feld für einen leeren Tracker frei."
+          "legacy_entry_id": "Ein einzelnes gefundenes Profil ist vorausgewählt. Vor der Übernahme siehst du eine Zusammenfassung. Ein noch aktiver alter Tracker wird erst nach deiner Bestätigung deaktiviert, um doppelte Erinnerungen zu vermeiden."
         }
+      },
+      "legacy_confirm": {
+        "title": "Medication Tracker übernehmen",
+        "description": "Aus **{tracker}** werden **{count} Medikamente** übernommen: {medications}.\n\nZeitpläne, Dosierungen, Notizen, Vorräte, Einnahmeverlauf und Benachrichtigungseinstellungen werden kopiert. Ein noch aktiver alter Tracker wird mit deiner Bestätigung deaktiviert; seine Daten bleiben erhalten.\n\nFür die neue Domain werden neue Entitäten angelegt. Passe bestehende Automationen an `medication_monitoring.*` und Dashboard-Karten an `custom:medication-monitoring-card` an. Für eine Rückkehr zuerst Medication Monitoring deaktivieren, danach den alten Tracker wieder aktivieren."
       }
     },
     "abort": {
       "already_configured": "Dieser Tracker ist bereits eingerichtet."
     },
     "error": {
-      "legacy_entry_unavailable": "Der bisherige Tracker muss deaktiviert sein und gespeicherte Daten enthalten."
+      "legacy_entry_unavailable": "Die gespeicherten Daten des bisherigen Trackers sind nicht mehr verfügbar, ungültig oder noch in Benutzung. Prüfe das alte Profil und starte die Einrichtung erneut. Ein bereits deaktivierter Tracker bleibt deaktiviert.",
+      "legacy_disable_failed": "Der alte Tracker konnte nicht vollständig beendet werden. Es wurde nichts importiert. Starte Home Assistant neu und versuche die Übernahme erneut."
     }
   },
   "options": {

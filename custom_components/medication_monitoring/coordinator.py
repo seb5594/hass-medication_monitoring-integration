@@ -30,13 +30,12 @@ from .const import (
     DEFAULT_STOCK_PER_DOSE,
     DOMAIN,
     DUE_SOON_MINUTES,
-    LEGACY_DOMAIN,
-    LEGACY_STORAGE_KEY,
     MED_TYPE_AS_NEEDED,
     MED_TYPE_SCHEDULED,
     STORAGE_KEY,
     STORAGE_VERSION,
 )
+from .legacy import async_load_legacy_data
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,18 +57,6 @@ def extract_scheduled_time(state: dict[str, Any]) -> str | None:
     elif state.get("is_due_soon") and state.get("next_dose_time"):
         return state["next_dose_time"]
     return None
-
-
-async def async_load_legacy_data(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
-    """Read the legacy store only while its config entry is disabled."""
-    entry = hass.config_entries.async_get_entry(entry_id)
-    if entry is None or entry.domain != LEGACY_DOMAIN or entry.disabled_by is None:
-        return None
-    store = Store(hass, STORAGE_VERSION, f"{LEGACY_STORAGE_KEY}_{entry_id}")
-    data = await store.async_load()
-    if not isinstance(data, dict) or not isinstance(data.get("medications"), list):
-        return None
-    return data
 
 
 class MedicationCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -100,7 +87,7 @@ class MedicationCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if stored is None and legacy_entry_id is not None:
             stored = await async_load_legacy_data(self.hass, legacy_entry_id)
             if stored is None:
-                raise ConfigEntryNotReady("The disabled legacy tracker has no readable medication data")
+                raise ConfigEntryNotReady("The legacy tracker must be stopped and have readable data")
             await self._store.async_save(stored)
         if stored:
             self._medications = stored.get("medications", [])

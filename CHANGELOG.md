@@ -3,6 +3,16 @@
 Versions follow the scheme of the original project: `YYYY.M.D.B`, the release date plus a build
 number for the day.
 
+## Unreleased
+
+- Detect Medication Tracker profiles from the original project and previous fork during setup,
+  including active profiles and saved stores left behind after uninstalling the old integration.
+- Preview medications before importing; disable a running source only after confirmation to
+  prevent duplicate reminders. Keep source data for rollback and prevent duplicate imports.
+- Validate imported stores and refuse to copy sources that failed to unload. Preserve the new
+  tracker's data on reload; the old integration does not need to remain installed.
+- Update installation and metadata links to the renamed Medication Monitoring repository.
+
 ## 2026.11.17.0
 
 - Support Home Assistant Core from 2021.12.10, including the button and stock-control entities.

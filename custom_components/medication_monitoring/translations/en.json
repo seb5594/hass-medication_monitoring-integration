@@ -3,21 +3,26 @@
     "step": {
       "user": {
         "title": "Set up Medication Monitoring",
-        "description": "Create a medication tracker instance. You can add medications after setup via the Configure button.",
+        "description": "Existing Medication Tracker profiles from the original project or previous fork are detected automatically, including saved data from removed installations. Select a profile to import, or leave it blank for a new, empty tracker.",
         "data": {
           "title": "Tracker name",
-          "legacy_entry_id": "Copy from a disabled legacy tracker"
+          "legacy_entry_id": "Import an existing Medication Tracker"
         },
         "data_description": {
-          "legacy_entry_id": "Disable the old tracker before copying its medications, dose history, stock, and settings. Leave this blank to start with an empty tracker."
+          "legacy_entry_id": "A single detected profile is preselected. You can review the import before confirming. An active old tracker is disabled only after confirmation to prevent duplicate reminders."
         }
+      },
+      "legacy_confirm": {
+        "title": "Import Medication Tracker",
+        "description": "Import **{count} medications** from **{tracker}**: {medications}.\n\nSchedules, doses, notes, stock, dose history, and notification settings are copied. Confirming disables an active old tracker; its saved data is preserved.\n\nThe new domain creates new entities. Update existing automations to `medication_monitoring.*` and dashboard cards to `custom:medication-monitoring-card`. To roll back, disable Medication Monitoring before re-enabling the old tracker."
       }
     },
     "abort": {
       "already_configured": "This tracker is already configured."
     },
     "error": {
-      "legacy_entry_unavailable": "The old tracker must be disabled and have saved data."
+      "legacy_entry_unavailable": "The old tracker data is unavailable, invalid, or still in use. Check the old profile and restart setup. A tracker already disabled during import stays disabled.",
+      "legacy_disable_failed": "The old tracker could not be fully stopped. Nothing was imported. Restart Home Assistant and try again."
     }
   },
   "options": {

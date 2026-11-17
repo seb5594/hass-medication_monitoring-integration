@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import NumberSelector
 
 from .compat import get_coordinator
@@ -68,13 +70,12 @@ from .const import (
     DEFAULT_STOCK_PER_DOSE,
     DOMAIN,
     IOS_SOUND_MODE_OPTIONS,
-    LEGACY_DOMAIN,
     MED_TYPE_AS_NEEDED,
     MED_TYPE_SCHEDULED,
     NOTIF_SOUND_KEYS_BY_TYPE,
 )
 
-from .coordinator import async_load_legacy_data
+from .legacy import async_find_legacy_sources, async_load_legacy_data
 from .notification_text import notification_template
 
 if TYPE_CHECKING:
@@ -227,23 +228,17 @@ class MedicationTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         title = (user_input or {}).get("title", "").strip()
         data: dict[str, Any] = {CONF_MEDICATIONS: []}
         errors: dict[str, str] = {}
-        sources = {
-            entry.entry_id: entry.title
-            for entry in self.hass.config_entries.async_entries(LEGACY_DOMAIN)
-            if entry.disabled_by is not None
-        }
+        sources = await async_find_legacy_sources(self.hass)
 
         if user_input is not None:
             source_id = user_input.get(CONF_LEGACY_ENTRY_ID)
             if source_id:
-                if source_id in sources and await async_load_legacy_data(self.hass, source_id) is not None:
-                    data[CONF_LEGACY_ENTRY_ID] = source_id
+                if source_id in sources:
                     await self.async_set_unique_id(f"legacy:{source_id}")
                     self._abort_if_unique_id_configured()
-                    source_title = sources[source_id]
-                    if source_title == "Medication Tracker":
-                        source_title = "Medication Monitoring"
-                    return self.async_create_entry(title=title or source_title, data=data)
+                    self._legacy_source = sources[source_id]
+                    self._legacy_title = title
+                    return await self.async_step_legacy_confirm()
                 errors[CONF_LEGACY_ENTRY_ID] = "legacy_entry_unavailable"
             else:
                 title = title or "Medication Monitoring"
@@ -253,10 +248,63 @@ class MedicationTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         fields: dict[Any, Any] = {vol.Optional("title", default=title): str}
         if sources:
-            fields[vol.Optional(CONF_LEGACY_ENTRY_ID)] = vol.In(sources)
+            default = next(iter(sources)) if len(sources) == 1 else vol.UNDEFINED
+            fields[vol.Optional(CONF_LEGACY_ENTRY_ID, default=default)] = vol.In({
+                source_id: f"{source.title} ({source_id})"
+                for source_id, source in sources.items()
+            })
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(fields),
+            errors=errors,
+        )
+
+    async def async_step_legacy_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Preview the import and stop a running source only after confirmation."""
+        source = self._legacy_source
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._abort_if_unique_id_configured()
+            data = await async_load_legacy_data(self.hass, source.entry_id, allow_active=True)
+            if data is None:
+                errors["base"] = "legacy_entry_unavailable"
+            else:
+                entry = self.hass.config_entries.async_get_entry(source.entry_id)
+                if entry is not None and entry.disabled_by is None:
+                    disabled_user = (
+                        config_entries.ConfigEntryDisabler.USER
+                        if hasattr(config_entries, "ConfigEntryDisabler") else "user"
+                    )
+                    try:
+                        stopped = await self.hass.config_entries.async_set_disabled_by(
+                            entry.entry_id, disabled_user
+                        )
+                    except HomeAssistantError:
+                        stopped = False
+                    if not stopped:
+                        errors["base"] = "legacy_disable_failed"
+                # Re-read after unloading: the source may have saved a final dose or stock update.
+                if not errors:
+                    data = await async_load_legacy_data(self.hass, source.entry_id)
+                    if data is None:
+                        errors["base"] = "legacy_entry_unavailable"
+                    else:
+                        title = self._legacy_title or source.title
+                        if title == "Medication Tracker":
+                            title = "Medication Monitoring"
+                        return self.async_create_entry(title=title, data={
+                            CONF_MEDICATIONS: [], CONF_LEGACY_ENTRY_ID: source.entry_id,
+                        })
+        return self.async_show_form(
+            step_id="legacy_confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "tracker": source.title,
+                "count": str(len(source.medications)),
+                "medications": ", ".join(source.medications) or "—",
+            },
             errors=errors,
         )
 

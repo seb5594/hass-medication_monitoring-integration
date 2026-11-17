@@ -56,10 +56,13 @@ async def test_import_disabled_tracker_once(hass, monkeypatch):
         domain, context={"source": config_entries.SOURCE_USER}
     )
     source_field = result["data_schema"].schema["legacy_entry_id"]
-    assert source_field.container == {legacy.entry_id: legacy.title}
+    assert source_field.container == {legacy.entry_id: f"{legacy.title} ({legacy.entry_id})"}
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"legacy_entry_id": legacy.entry_id}
     )
+    assert result["step_id"] == "legacy_confirm"
+    assert result["description_placeholders"]["count"] == "1"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] == "create_entry"
     entry = result["result"]
     assert entry.title == legacy.title
@@ -90,3 +93,89 @@ async def test_import_disabled_tracker_once(hass, monkeypatch):
     assert float(hass.states.get(stock_entity).state) == 7
     saved = await Store(hass, 1, storage_key).async_load()
     assert len(saved["dose_log"]["test_med"]) == 2
+
+    # An imported source cannot create another copy, even if its title changes.
+    result = await hass.config_entries.flow.async_init(
+        domain, context={"source": config_entries.SOURCE_USER}
+    )
+    assert "legacy_entry_id" not in result["data_schema"].schema
+    hass.config_entries.flow.async_abort(result["flow_id"])
+
+
+async def test_active_tracker_is_stopped_only_after_confirmation(hass, monkeypatch):
+    """Selecting or cancelling a migration must not interrupt existing reminders."""
+    monkeypatch.setattr("custom_components.medication_monitoring.async_register_card", AsyncMock())
+    legacy = MockConfigEntry(domain="medication_tracker", title="Current tracker")
+    legacy.add_to_hass(hass)
+    original = {"medications": [{"id": "one", "name": "Original", "times": ["09:00"]}]}
+    store = Store(hass, 1, f"medication_tracker_data_{legacy.entry_id}")
+    await store.async_save(original)
+    result = await hass.config_entries.flow.async_init(
+        "medication_monitoring", context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"legacy_entry_id": legacy.entry_id}
+    )
+    assert result["step_id"] == "legacy_confirm"
+    assert legacy.disabled_by is None
+    hass.config_entries.flow.async_abort(result["flow_id"])
+    assert legacy.disabled_by is None
+
+    # Simulate a running source's successful unload; the real manager still sets disabled_by.
+    monkeypatch.setattr(hass.config_entries, "async_reload", AsyncMock(return_value=True))
+    result = await hass.config_entries.flow.async_init(
+        "medication_monitoring", context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"legacy_entry_id": legacy.entry_id}
+    )
+    # Pick up changes made while the preview was open.
+    original["medications"][0]["name"] = "Updated"
+    await store.async_save(original)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] == "create_entry"
+    assert legacy.disabled_by is not None
+    await hass.async_block_till_done()
+    copied = await Store(hass, 1, f"medication_monitoring_data_{result['result'].entry_id}").async_load()
+    assert copied == original
+    assert await store.async_load() == original
+
+
+async def test_import_remaining_store_without_original_integration(hass, monkeypatch):
+    monkeypatch.setattr("custom_components.medication_monitoring.async_register_card", AsyncMock())
+    monkeypatch.setattr(
+        "custom_components.medication_monitoring.legacy._stored_entry_ids",
+        lambda _: ["removed_profile"],
+    )
+    original = {"medications": [{"id": "one", "name": "Recovered", "times": []}]}
+    await Store(hass, 1, "medication_tracker_data_removed_profile").async_save(original)
+    result = await hass.config_entries.flow.async_init(
+        "medication_monitoring", context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"legacy_entry_id": "removed_profile"}
+    )
+    assert result["step_id"] == "legacy_confirm"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert result["result"].state is config_entries.ConfigEntryState.LOADED
+    copied = await Store(hass, 1, f"medication_monitoring_data_{result['result'].entry_id}").async_load()
+    assert copied == original
+
+
+async def test_failed_unload_does_not_create_a_tracker(hass, monkeypatch):
+    legacy = MockConfigEntry(domain="medication_tracker", title="Cannot stop")
+    legacy.add_to_hass(hass)
+    await Store(hass, 1, f"medication_tracker_data_{legacy.entry_id}").async_save({"medications": []})
+    monkeypatch.setattr(hass.config_entries, "async_set_disabled_by", AsyncMock(return_value=False))
+    result = await hass.config_entries.flow.async_init(
+        "medication_monitoring", context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"legacy_entry_id": legacy.entry_id}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["errors"] == {"base": "legacy_disable_failed"}
+    assert not hass.config_entries.async_entries("medication_monitoring")
+    hass.config_entries.flow.async_abort(result["flow_id"])
