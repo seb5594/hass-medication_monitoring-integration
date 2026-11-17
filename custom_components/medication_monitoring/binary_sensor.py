@@ -10,10 +10,11 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .compat import DeviceInfo, entity_name, get_coordinator
 from .const import (
     ATTR_CURRENT_STOCK,
     ATTR_DOSE,
@@ -36,7 +37,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up binary sensor entities for each medication."""
-    coordinator: MedicationCoordinator = entry.runtime_data
+    coordinator = get_coordinator(hass, entry)
     entities: list[BinarySensorEntity] = []
     for med in coordinator.medications:
         entities += _binary_sensors_for_med(coordinator, entry.entry_id, med["id"])
@@ -145,7 +146,7 @@ class MedicationOverdueSensor(MedicationBaseBinarySensor):
 
     @property
     def name(self) -> str:
-        return "Overdue"
+        return entity_name(self._med_name, "Overdue")
 
     @property
     def is_on(self) -> bool:
@@ -181,7 +182,7 @@ class MedicationDueSoonSensor(MedicationBaseBinarySensor):
 
     @property
     def name(self) -> str:
-        return "Due Soon"
+        return entity_name(self._med_name, "Due Soon")
 
     @property
     def is_on(self) -> bool:
@@ -218,7 +219,7 @@ class MedicationAvailableSensor(MedicationBaseBinarySensor):
 
     @property
     def name(self) -> str:
-        return "Available"
+        return entity_name(self._med_name, "Available")
 
     @property
     def is_on(self) -> bool:
@@ -256,7 +257,7 @@ class MedicationLowStockSensor(MedicationBaseBinarySensor):
 
     @property
     def name(self) -> str:
-        return "Low Stock"
+        return entity_name(self._med_name, "Low Stock")
 
     @property
     def is_on(self) -> bool:

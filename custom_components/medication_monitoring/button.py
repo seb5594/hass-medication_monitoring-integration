@@ -5,9 +5,10 @@ from __future__ import annotations
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .compat import DeviceInfo, entity_name, get_coordinator
 from .const import (
     DOMAIN,
     SUFFIX_MARK_SKIPPED,
@@ -22,7 +23,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up button entities for each medication."""
-    coordinator: MedicationCoordinator = entry.runtime_data
+    coordinator = get_coordinator(hass, entry)
     entities: list[ButtonEntity] = []
     for med in coordinator.medications:
         entities += _buttons_for_med(coordinator, entry.entry_id, med["id"])
@@ -118,7 +119,7 @@ class MedicationMarkTakenButton(MedicationBaseButton):
 
     @property
     def name(self) -> str:
-        return "Mark taken"
+        return entity_name(self._med_name, "Mark taken")
 
     async def async_press(self) -> None:
         """Handle button press — mark dose taken with correct scheduled_time."""
@@ -145,7 +146,7 @@ class MedicationMarkSkippedButton(MedicationBaseButton):
 
     @property
     def name(self) -> str:
-        return "Mark skipped"
+        return entity_name(self._med_name, "Mark skipped")
 
     async def async_press(self) -> None:
         """Handle button press — mark dose skipped with correct scheduled_time."""

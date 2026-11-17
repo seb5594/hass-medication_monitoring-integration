@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
-from homeassistant.helpers.selector import NumberSelector, NumberSelectorConfig, NumberSelectorMode
+from homeassistant.helpers.selector import NumberSelector
 
+from .compat import get_coordinator
 from .const import (
     ANDROID_IMPORTANCE_OPTIONS,
     ANDROID_SOUND_MODE_OPTIONS,
@@ -75,6 +76,9 @@ from .const import (
 
 from .coordinator import async_load_legacy_data
 from .notification_text import notification_template
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigFlowResult
 
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 
@@ -279,7 +283,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         meds = coordinator.medications
 
         if user_input is not None:
@@ -375,7 +379,7 @@ class MedicationOptionsFlow(OptionsFlow):
 
             if not errors:
                 base = self._add_med_base or {}
-                coordinator = self._entry.runtime_data
+                coordinator = get_coordinator(self.hass, self._entry)
                 await coordinator.async_add_medication(
                     {
                         "name": base[CONF_MED_NAME],
@@ -411,7 +415,7 @@ class MedicationOptionsFlow(OptionsFlow):
         """Step 2b: as-needed dosing limits."""
         if user_input is not None:
             base = self._add_med_base or {}
-            coordinator = self._entry.runtime_data
+            coordinator = get_coordinator(self.hass, self._entry)
             await coordinator.async_add_medication(
                 {
                     "name": base[CONF_MED_NAME],
@@ -454,7 +458,7 @@ class MedicationOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Step 1: edit name, dose, type, notes."""
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         med = coordinator.get_medication(self._edit_id or "")
 
         if med is None:
@@ -492,7 +496,7 @@ class MedicationOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Step 2a: edit scheduled times and days."""
         errors: dict[str, str] = {}
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         med = coordinator.get_medication(self._edit_id or "")
 
         if med is None:
@@ -551,7 +555,7 @@ class MedicationOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Step 2b: edit as-needed dosing limits."""
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         med = coordinator.get_medication(self._edit_id or "")
 
         if med is None:
@@ -601,7 +605,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_remove_medication(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         meds = coordinator.medications
 
         if not meds:
@@ -631,7 +635,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_notifications(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         cfg = coordinator.notification_config
         notify_services = _get_notify_services(self.hass)
 
@@ -716,7 +720,7 @@ class MedicationOptionsFlow(OptionsFlow):
                         ),
                     ): vol.All(
                         NumberSelector(
-                            NumberSelectorConfig(min=1, max=1440, step=1, mode=NumberSelectorMode.BOX)
+                            {"min": 1, "max": 1440, "step": 1, "mode": "box"}
                         ),
                         vol.Coerce(int),
                     ),
@@ -727,7 +731,7 @@ class MedicationOptionsFlow(OptionsFlow):
                         ),
                     ): vol.All(
                         NumberSelector(
-                            NumberSelectorConfig(min=1, max=100, step=1, mode=NumberSelectorMode.BOX)
+                            {"min": 1, "max": 100, "step": 1, "mode": "box"}
                         ),
                         vol.Coerce(int),
                     ),
@@ -755,7 +759,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_notification_due_message(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         cfg = coordinator.notification_config
 
         if user_input is not None:
@@ -802,7 +806,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_notification_overdue_message(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         cfg = coordinator.notification_config
 
         if user_input is not None:
@@ -853,7 +857,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_notification_due_soon_message(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         cfg = coordinator.notification_config
 
         if user_input is not None:
@@ -904,7 +908,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_notification_taken_message(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         cfg = coordinator.notification_config
 
         if user_input is not None:
@@ -953,7 +957,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_notification_low_stock_message(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         cfg = coordinator.notification_config
 
         if user_input is not None:
@@ -1004,7 +1008,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_notification_per_medication(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         meds = coordinator.medications
 
         if not meds:
@@ -1032,7 +1036,7 @@ class MedicationOptionsFlow(OptionsFlow):
     async def async_step_notification_med_overrides(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        coordinator = self._entry.runtime_data
+        coordinator = get_coordinator(self.hass, self._entry)
         med = coordinator.get_medication(self._override_med_id or "")
 
         if med is None:

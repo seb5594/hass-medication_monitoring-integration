@@ -7,10 +7,11 @@ from typing import Any
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .compat import DeviceInfo, entity_name, get_coordinator
 from .const import (
     ATTR_CURRENT_STOCK,
     DOMAIN,
@@ -25,7 +26,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up number entities for each medication."""
-    coordinator: MedicationCoordinator = entry.runtime_data
+    coordinator = get_coordinator(hass, entry)
     entities: list[NumberEntity] = []
     for med in coordinator.medications:
         entities += _numbers_for_med(coordinator, entry.entry_id, med["id"])
@@ -79,6 +80,11 @@ class MedicationStockNumber(CoordinatorEntity[MedicationCoordinator], NumberEnti
     _attr_native_min_value = 0
     _attr_native_max_value = 100000
     _attr_native_step = 0.5
+
+    if not hasattr(NumberEntity, "native_value"):
+        _attr_min_value = _attr_native_min_value
+        _attr_max_value = _attr_native_max_value
+        _attr_step = _attr_native_step
     _attr_mode = NumberMode.BOX
     _attr_icon = "mdi:package-variant"
 
@@ -107,7 +113,7 @@ class MedicationStockNumber(CoordinatorEntity[MedicationCoordinator], NumberEnti
 
     @property
     def name(self) -> str:
-        return "Stock"
+        return entity_name(self._med_name, "Stock")
 
     @property
     def available(self) -> bool:
@@ -124,3 +130,7 @@ class MedicationStockNumber(CoordinatorEntity[MedicationCoordinator], NumberEnti
     async def async_set_native_value(self, value: float) -> None:
         """Set the stock to an absolute value — e.g. after a refill."""
         await self.coordinator.async_set_stock(self._med_id, value)
+
+    if not hasattr(NumberEntity, "native_value"):
+        value = native_value
+        async_set_value = async_set_native_value

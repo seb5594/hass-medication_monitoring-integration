@@ -12,11 +12,12 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 import homeassistant.util.dt as dt_util
 
+from .compat import DeviceInfo, entity_name, get_coordinator
 from .const import (
     ATTR_CURRENT_STOCK,
     ATTR_DOSE,
@@ -46,7 +47,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor entities for each medication."""
-    coordinator: MedicationCoordinator = entry.runtime_data
+    coordinator = get_coordinator(hass, entry)
     entities: list[SensorEntity] = []
     for med in coordinator.medications:
         entities += _sensors_for_med(coordinator, entry.entry_id, med["id"])
@@ -164,7 +165,7 @@ class MedicationNextDoseSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return "Next Dose"
+        return entity_name(self._med_name, "Next Dose")
 
     @property
     def native_value(self) -> datetime | None:
@@ -203,7 +204,7 @@ class MedicationLastTakenSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return "Last Taken"
+        return entity_name(self._med_name, "Last Taken")
 
     @property
     def native_value(self) -> datetime | None:
@@ -241,7 +242,7 @@ class MedicationStreakSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return "Streak"
+        return entity_name(self._med_name, "Streak")
 
     @property
     def native_value(self) -> int:
@@ -277,7 +278,7 @@ class MedicationTakenTodaySensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return "Taken Today"
+        return entity_name(self._med_name, "Taken Today")
 
     @property
     def native_value(self) -> int:
@@ -311,7 +312,7 @@ class MedicationNextAvailableSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return "Next Available"
+        return entity_name(self._med_name, "Next Available")
 
     @property
     def native_value(self) -> datetime | None:
@@ -355,7 +356,7 @@ class MedicationStockSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return "Stock"
+        return entity_name(self._med_name, "Stock")
 
     @property
     def native_value(self) -> float | None:

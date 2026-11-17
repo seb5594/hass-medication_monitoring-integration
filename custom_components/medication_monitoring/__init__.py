@@ -8,11 +8,11 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .card import async_register_card
+from .compat import get_coordinator, set_coordinator
 from .const import (
     ATTR_AMOUNT,
     ATTR_MEDICATION_ID,
@@ -31,9 +31,15 @@ from .notify import MedicationNotifier
 
 _LOGGER = logging.getLogger(__name__)
 
-type MedicationTrackerConfigEntry = ConfigEntry[MedicationCoordinator]
+try:
+    from homeassistant.exceptions import ServiceValidationError
+except ImportError:
+    from homeassistant.exceptions import HomeAssistantError as ServiceValidationError
 
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+if hasattr(cv, "config_entry_only_config_schema"):
+    CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+else:
+    CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): vol.Schema({})}, extra=vol.ALLOW_EXTRA)
 
 # ---------------------------------------------------------------------------
 # Service schemas
@@ -77,7 +83,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: MedicationTrackerConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Medication Monitoring from a config entry."""
     coordinator = MedicationCoordinator(hass, entry.entry_id)
     await coordinator.async_load(entry.data.get(CONF_LEGACY_ENTRY_ID))
@@ -87,21 +93,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: MedicationTrackerConfigE
 
     await coordinator.async_config_entry_first_refresh()
 
-    entry.runtime_data = coordinator
+    set_coordinator(hass, entry, coordinator)
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    manager = hass.config_entries
+    if hasattr(manager, "async_forward_entry_setups"):
+        await manager.async_forward_entry_setups(entry, PLATFORMS)
+    else:
+        # Awaiting the old API in entry setup can deadlock during component startup.
+        for platform in PLATFORMS:
+            hass.async_create_task(manager.async_forward_entry_setup(entry, platform))
 
     _register_services(hass, entry)
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: MedicationTrackerConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    coordinator = get_coordinator(hass, entry)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
-    if hasattr(entry.runtime_data, "_notifier") and entry.runtime_data._notifier:
-        entry.runtime_data._notifier.unsubscribe()
+    if unload_ok and coordinator is not None and coordinator._notifier is not None:
+        coordinator._notifier.unsubscribe()
 
     remaining = [
         e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id
@@ -126,15 +139,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: MedicationTrackerConfig
 def _get_coordinator(hass: HomeAssistant, med_id: str) -> MedicationCoordinator:
     """Find the coordinator that owns this medication id."""
     for entry in hass.config_entries.async_entries(DOMAIN):
-        coordinator: MedicationCoordinator = entry.runtime_data
-        if coordinator.get_medication(med_id):
+        coordinator = get_coordinator(hass, entry)
+        if coordinator is not None and coordinator.get_medication(med_id):
             return coordinator
     raise ServiceValidationError(
         f"Medication with id '{med_id}' not found in any Medication Monitoring entry."
     )
 
 
-def _register_services(hass: HomeAssistant, entry: MedicationTrackerConfigEntry) -> None:
+def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register HA services (idempotent — only registers once)."""
     if hass.services.has_service(DOMAIN, SERVICE_MARK_TAKEN):
         return

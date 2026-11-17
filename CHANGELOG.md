@@ -5,6 +5,7 @@ number for the day.
 
 ## 2026.11.17.0
 
+- Support Home Assistant Core from 2021.12.10, including the button and stock-control entities.
 - Give the Community edition a distinct Home Assistant domain and HACS package for a separate catalog listing.
 - Add an optional import from a disabled legacy tracker for medication schedules, dose history, stock, and notification preferences.
 - See the [upgrade steps](README.md#upgrade-from-the-previous-fork-release-or-import-from-upstream) for existing dashboards and automations.

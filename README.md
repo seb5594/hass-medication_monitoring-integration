@@ -43,6 +43,11 @@ Track medications, scheduled doses, streaks, and overdue alerts — entirely loc
 
 ## Installation
 
+Medication Monitoring supports Home Assistant Core 2021.12.10 and newer.
+Use the manual installation below on Core versions older than 2024.4.1. The current
+[HACS installation requirements](https://www.hacs.xyz/docs/use/download/prerequisites/)
+start at Core 2024.4.1.
+
 ### Via HACS as a custom repository
 
 1. Use the *HACS · Marketplace* badge above, or open **HACS → ⋮ → Custom repositories** and add
