@@ -5,12 +5,19 @@
         "title": "Set up Medication Tracker",
         "description": "Create a medication tracker instance. You can add medications after setup via the Configure button.",
         "data": {
-          "title": "Tracker name"
+          "title": "Tracker name",
+          "legacy_entry_id": "Copy from a disabled legacy tracker"
+        },
+        "data_description": {
+          "legacy_entry_id": "Disable the old tracker before copying its medications, dose history, stock, and settings. Leave this blank to start with an empty tracker."
         }
       }
     },
     "abort": {
-      "already_configured": "This tracker name is already configured."
+      "already_configured": "This tracker is already configured."
+    },
+    "error": {
+      "legacy_entry_unavailable": "The old tracker must be disabled and have saved data."
     }
   },
   "options": {
@@ -194,5 +201,6 @@
       "invalid_time_format": "Invalid time format. Use HH:MM, comma-separated (e.g. 08:00, 20:00).",
       "invalid_day_format": "Invalid day format. Use mon/tue/wed/thu/fri/sat/sun, comma-separated."
     }
-  }
+  },
+  "title": "Medication Tracker (Community)"
 }

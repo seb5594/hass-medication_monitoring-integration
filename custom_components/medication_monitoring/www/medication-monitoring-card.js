@@ -1,4 +1,4 @@
-console.info("[medication-tracker-card] script loaded");
+console.info("[medication-monitoring-card] script loaded");
 
 const DEFAULT_LANGUAGE = "en";
 
@@ -110,9 +110,9 @@ class MedicationTrackerCard extends HTMLElement {
     const states = this._hass.states;
     if (deviceEntityIds) {
       const match = deviceEntityIds.find(
-        (eid) => eid.startsWith(`${domain}.`) && eid.endsWith(`_${suffix}`)
+        (eid) => eid.startsWith(`${domain}.`) && eid.replace(/_\d+$/, "").endsWith(`_${suffix}`)
       );
-      if (match) return match;
+      return match ?? null;
     }
     const guessed = `${domain}.${base}_${suffix}`;
     return states[guessed] ? guessed : null;
@@ -175,20 +175,22 @@ class MedicationTrackerCard extends HTMLElement {
     }
 
     const nextDoseSensors = Object.entries(states).filter(
-      ([id]) => id.startsWith("sensor.") && id.endsWith("_next_dose")
+      ([id, state]) => id.startsWith("sensor.") && /_next_dose(?:_\d+)?$/.test(id) &&
+        state.attributes.tracker_domain === "medication_monitoring"
     );
 
     // Also find PRN medications via next_available sensors
     const nextAvailableSensors = Object.entries(states).filter(
-      ([id]) => id.startsWith("sensor.") && id.endsWith("_next_available")
+      ([id, state]) => id.startsWith("sensor.") && /_next_available(?:_\d+)?$/.test(id) &&
+        state.attributes.tracker_domain === "medication_monitoring"
     );
 
     const scheduledMeds = nextDoseSensors.map(([entityId, state]) =>
-      this._buildMed(entityId, state, "_next_dose", /\s*Next Dose$/i, "scheduled", byDevice)
+      this._buildMed(entityId, state, /_next_dose(?:_\d+)?$/, /\s*Next Dose$/i, "scheduled", byDevice)
     );
 
     const asNeededMeds = nextAvailableSensors.map(([entityId, state]) =>
-      this._buildMed(entityId, state, "_next_available", /\s*Next Available$/i, "as_needed", byDevice)
+      this._buildMed(entityId, state, /_next_available(?:_\d+)?$/, /\s*Next Available$/i, "as_needed", byDevice)
     );
 
     this._medications = [...scheduledMeds, ...asNeededMeds];
@@ -422,13 +424,13 @@ class MedicationTrackerCard extends HTMLElement {
 
 // The file may be loaded twice, e.g. by the integration and by a resource
 // that was added manually in an earlier version. Registering again would throw.
-if (!customElements.get("medication-tracker-card")) {
-  customElements.define("medication-tracker-card", MedicationTrackerCard);
+if (!customElements.get("medication-monitoring-card")) {
+  customElements.define("medication-monitoring-card", MedicationTrackerCard);
 
   window.customCards = window.customCards || [];
   window.customCards.push({
-    type: "medication-tracker-card",
-    name: "Medication Tracker",
+    type: "medication-monitoring-card",
+    name: "Medication Tracker (Community)",
     description: "Shows all medications with status and mark taken / skip buttons.",
     preview: false,
   });

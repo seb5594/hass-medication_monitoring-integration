@@ -24,6 +24,7 @@ from .const import (
     CONF_MED_NOTES,
     CONF_MED_TIMES,
     CONF_MED_TYPE,
+    CONF_LEGACY_ENTRY_ID,
     CONF_MEDICATIONS,
     CONF_NOTIF_DUE_ENABLED,
     CONF_NOTIF_DUE_MESSAGE,
@@ -66,11 +67,13 @@ from .const import (
     DEFAULT_STOCK_PER_DOSE,
     DOMAIN,
     IOS_SOUND_MODE_OPTIONS,
+    LEGACY_DOMAIN,
     MED_TYPE_AS_NEEDED,
     MED_TYPE_SCHEDULED,
     NOTIF_SOUND_KEYS_BY_TYPE,
 )
 
+from .coordinator import async_load_legacy_data
 from .notification_text import notification_template
 
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
@@ -217,24 +220,36 @@ class MedicationTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        title = (user_input or {}).get("title", "").strip()
+        data: dict[str, Any] = {CONF_MEDICATIONS: []}
         errors: dict[str, str] = {}
+        sources = {
+            entry.entry_id: entry.title
+            for entry in self.hass.config_entries.async_entries(LEGACY_DOMAIN)
+            if entry.disabled_by is not None
+        }
 
         if user_input is not None:
-            title = user_input.get("title", "Medication Tracker").strip() or "Medication Tracker"
-            await self.async_set_unique_id(title.lower().replace(" ", "_"))
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title=title,
-                data={CONF_MEDICATIONS: []},
-            )
+            source_id = user_input.get(CONF_LEGACY_ENTRY_ID)
+            if source_id:
+                if source_id in sources and await async_load_legacy_data(self.hass, source_id) is not None:
+                    data[CONF_LEGACY_ENTRY_ID] = source_id
+                    await self.async_set_unique_id(f"legacy:{source_id}")
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(title=title or sources[source_id], data=data)
+                errors[CONF_LEGACY_ENTRY_ID] = "legacy_entry_unavailable"
+            else:
+                title = title or "Medication Tracker (Community)"
+                await self.async_set_unique_id(title.lower().replace(" ", "_"))
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=title, data=data)
 
+        fields: dict[Any, Any] = {vol.Optional("title", default=title): str}
+        if sources:
+            fields[vol.Optional(CONF_LEGACY_ENTRY_ID)] = vol.In(sources)
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional("title", default="Medication Tracker"): str,
-                }
-            ),
+            data_schema=vol.Schema(fields),
             errors=errors,
         )
 

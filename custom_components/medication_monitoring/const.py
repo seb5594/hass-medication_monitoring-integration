@@ -1,6 +1,8 @@
 """Constants for the Medication Tracker integration."""
 
-DOMAIN = "medication_tracker"
+DOMAIN = "medication_monitoring"
+LEGACY_DOMAIN = "medication_tracker"
+CONF_LEGACY_ENTRY_ID = "legacy_entry_id"
 PLATFORMS = ["sensor", "binary_sensor", "button", "number"]
 
 # Config keys
@@ -12,7 +14,8 @@ CONF_MED_DAYS = "days"  # list of weekday ints 0-6, empty = every day
 CONF_MED_NOTES = "notes"
 
 # Storage
-STORAGE_KEY = "medication_tracker_data"
+STORAGE_KEY = f"{DOMAIN}_data"
+LEGACY_STORAGE_KEY = f"{LEGACY_DOMAIN}_data"
 STORAGE_VERSION = 1
 
 # Sensor unique id suffixes
@@ -93,7 +96,7 @@ CONF_NOTIFICATIONS = "notifications"
 # Tag used on due/due-soon/overdue push notifications so a repeat replaces
 # (rather than stacks on top of) the previous one, and so marking a dose
 # taken or skipped can explicitly clear any pending reminder on the device.
-REMINDER_NOTIFICATION_TAG_PREFIX = "medication_reminder_"
+REMINDER_NOTIFICATION_TAG_PREFIX = "medication_community_reminder_"
 
 # Global defaults keys
 CONF_NOTIF_TARGET = "notify_target"

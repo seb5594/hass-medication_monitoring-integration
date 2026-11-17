@@ -177,6 +177,7 @@ class MedicationNextDoseSensor(MedicationBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            "tracker_domain": DOMAIN,
             ATTR_TIMES: data.get(ATTR_TIMES, []),
             ATTR_SCHEDULED_TIME: data.get("next_dose_time"),
             ATTR_DOSE: data.get(ATTR_DOSE, ""),
@@ -323,6 +324,7 @@ class MedicationNextAvailableSensor(MedicationBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            "tracker_domain": DOMAIN,
             "is_available": data.get("is_available", True),
             "doses_taken_today": data.get("doses_taken_today", 0),
             "doses_taken_24h": data.get("doses_taken_24h", 0),

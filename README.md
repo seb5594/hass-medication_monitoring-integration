@@ -1,8 +1,8 @@
 <!-- header:begin (generated from project metadata) -->
-<h1 align="center">Medication Tracker</h1>
+<h1 align="center">Medication Tracker (Community)</h1>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/seb5594/hass-medication_tracker-integration/main/custom_components/medication_tracker/brand/icon@2x.png" alt="Medication Tracker" width="160" height="160">
+  <img src="https://raw.githubusercontent.com/seb5594/hass-medication_tracker-integration/main/custom_components/medication_monitoring/brand/icon@2x.png" alt="Medication Tracker" width="160" height="160">
 </p>
 
 ---
@@ -50,15 +50,31 @@ Track medications, scheduled doses, streaks, and overdue alerts — entirely loc
 2. Open the entry from `seb5594/hass-medication_tracker-integration` and download it.
 3. Restart Home Assistant.
 
-The upstream project `calebgab/medication_tracker` is listed in the default catalog. Both
-repositories install to `custom_components/medication_tracker`, so manage only one of them in
-HACS. If switching from the upstream repository, back up Home Assistant and remove the old
-repository's download in HACS before installing this fork. Keep your existing Home Assistant
-configuration entry.
+The Community edition uses the Home Assistant domain `medication_monitoring`. The
+[upstream project](https://github.com/calebgab/medication_tracker) and releases through
+`v2026.11.16.0` use `medication_tracker`.
+
+### Upgrade from the previous fork release or import from upstream
+
+1. Back up Home Assistant and **disable** your source tracker in **Settings → Devices & Services**.
+   Keep its configuration entry until you have verified the import.
+2. Install or update **Medication Tracker (Community)**, then restart Home Assistant.
+3. Add **Medication Tracker (Community)** in **Settings → Devices & Services → Add Integration**.
+   Select the disabled tracker under **Copy from a disabled legacy tracker**. Repeat for each tracker
+   you want to move.
+4. Verify your medications, stock, recent dose history, and notification settings. The import
+   copies the local data into a new tracker. The previous tracker and its saved data stay in place.
+5. Update automations to use the new entities and `medication_monitoring.*` actions.
+   Replace `custom:medication-tracker-card` with `custom:medication-monitoring-card` in
+   dashboard YAML, or select **Medication Tracker (Community)** in the card picker.
+
+Home Assistant creates new devices and entities for the imported tracker. Old mobile notification
+buttons are tied to the old tracker. Keep it disabled for the imported profiles to avoid duplicate
+reminders. To roll back, disable the Community tracker before re-enabling the original.
 
 ### Manual
 
-1. Copy the `custom_components/medication_tracker/` folder into your HA `custom_components/` directory
+1. Copy the `custom_components/medication_monitoring/` folder into your HA `custom_components/` directory
 2. Restart Home Assistant
 
 ---
@@ -66,7 +82,7 @@ configuration entry.
 ## Setup
 
 1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **Medication Tracker**
+2. Search for **Medication Tracker (Community)**
 3. Give it a name (useful if you want multiple trackers, e.g. one per person)
 4. Click **Configure** to add your first medication
 
@@ -125,7 +141,7 @@ Once enabled, stock decrements automatically every time a dose is marked taken, 
 
 - **Device page** — open the medication's device (Settings → Devices & Services → Medication Tracker → the medication), and set the **Stock** control under Controls directly to a new value
 - **Lovelace card** — click **Top up stock** on the medication's card, which opens the same Stock control
-- **Service** — call `medication_tracker.adjust_stock` (see [Services](#services)) to add or subtract an amount, handy for automations (e.g. after scanning a barcode)
+- **Service** — call `medication_monitoring.adjust_stock` (see [Services](#services)) to add or subtract an amount, handy for automations (e.g. after scanning a barcode)
 
 ### Notifications
 
@@ -256,7 +272,7 @@ The `low_stock` binary sensor includes:
 
 ## Services
 
-### `medication_tracker.mark_taken`
+### `medication_monitoring.mark_taken`
 
 Record that a dose was taken.
 
@@ -266,7 +282,7 @@ Record that a dose was taken.
 | `scheduled_time` | ❌ | Which scheduled slot this applies to (HH:MM) |
 | `taken_at` | ❌ | When it was taken (ISO datetime, defaults to now) |
 
-### `medication_tracker.mark_skipped`
+### `medication_monitoring.mark_skipped`
 
 Record that a scheduled dose was intentionally skipped (prevents overdue alert for that slot).
 
@@ -275,7 +291,7 @@ Record that a scheduled dose was intentionally skipped (prevents overdue alert f
 | `medication_id` | ✅ | The medication's unique ID |
 | `scheduled_time` | ❌ | Which scheduled slot is being skipped |
 
-### `medication_tracker.reset_today`
+### `medication_monitoring.reset_today`
 
 Clear all taken/skipped entries for today for a given medication.
 
@@ -283,7 +299,7 @@ Clear all taken/skipped entries for today for a given medication.
 |-----------|----------|-------------|
 | `medication_id` | ✅ | The medication's unique ID |
 
-### `medication_tracker.adjust_stock`
+### `medication_monitoring.adjust_stock`
 
 Add to or subtract from a medication's current stock level — handy for automations (e.g. after scanning a barcode). For manual restocking, it's usually quicker to set the `number.<name>_stock` control directly from the device page or the **Top up stock** button on the Lovelace card (see [Stock tracking](#stock-tracking-optional)). Only works for medications with stock tracking enabled.
 
@@ -312,7 +328,7 @@ Earlier versions required copying `medication-tracker-card.js` to `config/www` a
 
 1. Edit any dashboard
 2. Click **Add card**
-3. Scroll to the bottom and select **Custom: Medication Tracker**
+3. Scroll to the bottom and select **Custom: Medication Tracker (Community)**
 4. The card automatically discovers all your medications — no configuration needed
 
 ---
@@ -328,7 +344,7 @@ automation:
       - platform: tag
         tag_id: "your-nfc-tag-id"
     action:
-      - service: medication_tracker.mark_taken
+      - service: medication_monitoring.mark_taken
         data:
           medication_id: "your-medication-id-here"
 ```
@@ -387,13 +403,13 @@ Open Developer Tools → States, find any entity for your medication (e.g. `sens
 Check that your scheduled times are in `HH:MM` 24-hour format and that your HA timezone is set correctly (**Settings → System → General**).
 
 **Entities disappeared after a restart**
-This should not happen — medications are persisted in HA's `.storage` directory. If it does, check the HA logs for errors from the `medication_tracker` domain.
+This should not happen — medications are persisted in HA's `.storage` directory. If it does, check the HA logs for errors from the `medication_monitoring` domain.
 
 **Notifications aren't working**
 Check that you have selected a notify target in **Configure → Notifications** and that the relevant toggles (overdue, due soon) are enabled. The notify service name must exactly match a service listed in Developer Tools → Services under `notify.`.
 
 **The Lovelace card isn't appearing in the card picker**
-Restart Home Assistant after installing or updating the integration and do a full page reload (`Ctrl+Shift+R` / `Cmd+Shift+R`). If it still doesn't show up, check that the file is reachable at `/api/medication_tracker/medication-tracker-card.js` in your browser.
+Restart Home Assistant after installing or updating the integration and do a full page reload (`Ctrl+Shift+R` / `Cmd+Shift+R`). If it still doesn't show up, check that the file is reachable at `/api/medication_monitoring/medication-monitoring-card.js` in your browser.
 
 ---
 

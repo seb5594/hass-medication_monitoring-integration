@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 
-ROOT = Path(__file__).resolve().parents[1] / "custom_components/medication_tracker"
+ROOT = Path(__file__).resolve().parents[1] / "custom_components/medication_monitoring"
 # Load the notification modules without running integration setup or requiring HA.
 PACKAGE = "_medication_notification_tests"
 package = ModuleType(PACKAGE)
@@ -117,10 +117,10 @@ class NotificationDeliveryTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(payload["message"], templates[f"{kind}_message"].format(**placeholders))
                         if kind in ("due", "overdue", "due_soon"):
                             self.assertEqual(payload["data"]["actions"], [{
-                                "action": "MT_TAKEN_test-med",
+                                "action": "MTC_TAKEN_test-med",
                                 "title": "Als eingenommen markieren" if language == "de-DE" else "Mark taken",
                             }])
-                            self.assertEqual(payload["data"]["tag"], "medication_reminder_test-med")
+                            self.assertEqual(payload["data"]["tag"], "medication_community_reminder_test-med")
 
 
 if __name__ == "__main__":

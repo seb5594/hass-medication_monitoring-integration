@@ -8,6 +8,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
@@ -29,6 +30,8 @@ from .const import (
     DEFAULT_STOCK_PER_DOSE,
     DOMAIN,
     DUE_SOON_MINUTES,
+    LEGACY_DOMAIN,
+    LEGACY_STORAGE_KEY,
     MED_TYPE_AS_NEEDED,
     MED_TYPE_SCHEDULED,
     STORAGE_KEY,
@@ -57,6 +60,18 @@ def extract_scheduled_time(state: dict[str, Any]) -> str | None:
     return None
 
 
+async def async_load_legacy_data(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    """Read the legacy store only while its config entry is disabled."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None or entry.domain != LEGACY_DOMAIN or entry.disabled_by is None:
+        return None
+    store = Store(hass, STORAGE_VERSION, f"{LEGACY_STORAGE_KEY}_{entry_id}")
+    data = await store.async_load()
+    if not isinstance(data, dict) or not isinstance(data.get("medications"), list):
+        return None
+    return data
+
+
 class MedicationCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Manage medication state and persistence."""
 
@@ -79,9 +94,14 @@ class MedicationCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Initialisation
     # ------------------------------------------------------------------
 
-    async def async_load(self) -> None:
-        """Load persisted data from storage."""
+    async def async_load(self, legacy_entry_id: str | None = None) -> None:
+        """Load our data and import the legacy store on first setup only."""
         stored = await self._store.async_load()
+        if stored is None and legacy_entry_id is not None:
+            stored = await async_load_legacy_data(self.hass, legacy_entry_id)
+            if stored is None:
+                raise ConfigEntryNotReady("The disabled legacy tracker has no readable medication data")
+            await self._store.async_save(stored)
         if stored:
             self._medications = stored.get("medications", [])
             raw_log = stored.get("dose_log", {})

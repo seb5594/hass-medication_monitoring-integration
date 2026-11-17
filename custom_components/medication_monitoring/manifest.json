@@ -1,6 +1,6 @@
 {
-  "domain": "medication_tracker",
-  "name": "Medication Tracker",
+  "domain": "medication_monitoring",
+  "name": "Medication Tracker (Community)",
   "after_dependencies": [],
   "categories": [
     "health_wellbeing"
@@ -18,5 +18,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/seb5594/hass-medication_tracker-integration/issues",
   "requirements": [],
-  "version": "2026.11.16.0"
+  "version": "2026.11.17.0"
 }

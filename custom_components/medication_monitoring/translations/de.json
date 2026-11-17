@@ -1,17 +1,24 @@
 {
-  "title": "Medikamentenübersicht",
+  "title": "Medikamentenübersicht (Community)",
   "config": {
     "step": {
       "user": {
         "title": "Medikamentenübersicht einrichten",
         "description": "Erstelle eine neue Medikamentenübersicht. Medikamente kannst du nach der Einrichtung über die Schaltfläche „Konfigurieren“ hinzufügen.",
         "data": {
-          "title": "Name des Trackers"
+          "title": "Name des Trackers",
+          "legacy_entry_id": "Daten aus einem deaktivierten bisherigen Tracker übernehmen"
+        },
+        "data_description": {
+          "legacy_entry_id": "Deaktiviere den bisherigen Tracker vor der Übernahme von Medikamenten, Einnahmeverlauf, Bestand und Einstellungen. Lasse das Feld für einen leeren Tracker frei."
         }
       }
     },
     "abort": {
-      "already_configured": "Dieser Tracker-Name ist bereits konfiguriert."
+      "already_configured": "Dieser Tracker ist bereits eingerichtet."
+    },
+    "error": {
+      "legacy_entry_unavailable": "Der bisherige Tracker muss deaktiviert sein und gespeicherte Daten enthalten."
     }
   },
   "options": {

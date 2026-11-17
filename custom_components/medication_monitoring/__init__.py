@@ -18,6 +18,7 @@ from .const import (
     ATTR_MEDICATION_ID,
     ATTR_SCHEDULED_TIME,
     ATTR_TAKEN_AT,
+    CONF_LEGACY_ENTRY_ID,
     DOMAIN,
     PLATFORMS,
     SERVICE_ADJUST_STOCK,
@@ -79,7 +80,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: MedicationTrackerConfigEntry) -> bool:
     """Set up Medication Tracker from a config entry."""
     coordinator = MedicationCoordinator(hass, entry.entry_id)
-    await coordinator.async_load()
+    await coordinator.async_load(entry.data.get(CONF_LEGACY_ENTRY_ID))
 
     notifier = MedicationNotifier(hass, coordinator)
     coordinator._notifier = notifier

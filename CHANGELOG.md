@@ -3,6 +3,12 @@
 Versions follow the scheme of the original project: `YYYY.M.D.B`, the release date plus a build
 number for the day.
 
+## 2026.11.17.0
+
+- Give the Community edition a distinct Home Assistant domain and HACS package for a separate catalog listing.
+- Add an optional import from a disabled legacy tracker for medication schedules, dose history, stock, and notification preferences.
+- See the [upgrade steps](README.md#upgrade-from-the-previous-fork-release-or-import-from-upstream) for existing dashboards and automations.
+
 ## 2026.11.16.0
 
 - Add the Health & wellbeing Marketplace category.

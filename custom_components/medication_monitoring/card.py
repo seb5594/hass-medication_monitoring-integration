@@ -11,7 +11,7 @@ from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
 
-CARD_FILENAME = "medication-tracker-card.js"
+CARD_FILENAME = "medication-monitoring-card.js"
 CARD_URL = f"/api/{DOMAIN}/{CARD_FILENAME}"
 CARD_FILE = Path(__file__).parent / "www" / CARD_FILENAME
 

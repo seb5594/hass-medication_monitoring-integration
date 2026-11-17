@@ -62,7 +62,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-ACTION_MARK_TAKEN_PREFIX = "MT_TAKEN_"
+ACTION_MARK_TAKEN_PREFIX = "MTC_TAKEN_"
 
 
 def _is_ios(hass: HomeAssistant, target: str) -> bool:
@@ -99,7 +99,7 @@ def _build_action_data(
     if is_ios:
         return {
             "actions": actions,
-            "push": {"category": "MEDICATION_ALERT"},
+            "push": {"category": "MEDICATION_COMMUNITY_ALERT"},
             "tag": tag,
         }
     return {
