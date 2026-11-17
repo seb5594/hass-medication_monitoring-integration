@@ -1,0 +1,22 @@
+{
+  "domain": "medication_monitoring",
+  "name": "Medication Monitoring",
+  "after_dependencies": [],
+  "categories": [
+    "health_wellbeing"
+  ],
+  "codeowners": [
+    "@calebgab",
+    "@seb5594"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http"
+  ],
+  "documentation": "https://github.com/seb5594/hass-medication_monitoring-integration",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/seb5594/hass-medication_monitoring-integration/issues",
+  "requirements": [],
+  "version": "2026.11.17.0"
+}

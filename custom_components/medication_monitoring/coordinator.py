@@ -1,0 +1,641 @@
+"""DataUpdateCoordinator for Medication Monitoring."""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import date, datetime, time, timedelta
+from typing import Any
+
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+import homeassistant.util.dt as dt_util
+
+from .const import (
+    CONF_CURRENT_STOCK,
+    CONF_NOTIF_OVERDUE_REPEAT_MINUTES,
+    CONF_NOTIFICATIONS,
+    CONF_STOCK_LOW_THRESHOLD,
+    CONF_STOCK_PER_DOSE,
+    CONF_STOCK_TRACKING_ENABLED,
+    DEFAULT_AS_NEEDED_MAX_PER_24H,
+    DEFAULT_AS_NEEDED_MAX_PER_DAY,
+    DEFAULT_AS_NEEDED_MIN_HOURS,
+    DEFAULT_OVERDUE_REPEAT_MINUTES,
+    DEFAULT_STOCK_LOW_THRESHOLD,
+    DEFAULT_STOCK_PER_DOSE,
+    DOMAIN,
+    DUE_SOON_MINUTES,
+    MED_TYPE_AS_NEEDED,
+    MED_TYPE_SCHEDULED,
+    STORAGE_KEY,
+    STORAGE_VERSION,
+)
+from .legacy import async_load_legacy_data
+
+_LOGGER = logging.getLogger(__name__)
+
+UPDATE_INTERVAL = timedelta(minutes=1)
+
+
+def extract_scheduled_time(state: dict[str, Any]) -> str | None:
+    """Return the HH:MM scheduled time for the current dose state, or None."""
+    if state.get("is_overdue") and state.get("overdue_since"):
+        try:
+            return datetime.fromisoformat(state["overdue_since"]).strftime("%H:%M")
+        except (ValueError, KeyError):
+            pass
+    elif state.get("is_due_now") and state.get("due_at_time"):
+        try:
+            return datetime.fromisoformat(state["due_at_time"]).strftime("%H:%M")
+        except (ValueError, KeyError):
+            pass
+    elif state.get("is_due_soon") and state.get("next_dose_time"):
+        return state["next_dose_time"]
+    return None
+
+
+class MedicationCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Manage medication state and persistence."""
+
+    def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=UPDATE_INTERVAL,
+        )
+        self.entry_id = entry_id
+        self._store: Store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}")
+        self._medications: list[dict[str, Any]] = []
+        self._dose_log: dict[str, list[dict[str, Any]]] = {}
+        self._notification_config: dict[str, Any] = {}
+        # Notifier is set by __init__.py after construction
+        self._notifier: Any = None
+
+    # ------------------------------------------------------------------
+    # Initialisation
+    # ------------------------------------------------------------------
+
+    async def async_load(self, legacy_entry_id: str | None = None) -> None:
+        """Load our data and import the legacy store on first setup only."""
+        stored = await self._store.async_load()
+        if stored is None and legacy_entry_id is not None:
+            stored = await async_load_legacy_data(self.hass, legacy_entry_id)
+            if stored is None:
+                raise ConfigEntryNotReady("The legacy tracker must be stopped and have readable data")
+            await self._store.async_save(stored)
+        if stored:
+            self._medications = stored.get("medications", [])
+            raw_log = stored.get("dose_log", {})
+            cutoff = (date.today() - timedelta(days=90)).isoformat()
+            self._dose_log = {
+                med_id: [e for e in entries if e.get("date", "") >= cutoff]
+                for med_id, entries in raw_log.items()
+            }
+            self._notification_config = stored.get(CONF_NOTIFICATIONS, {})
+        else:
+            self._medications = []
+            self._dose_log = {}
+            self._notification_config = {}
+        await self._async_cleanup_orphaned_devices()
+
+    async def _async_cleanup_orphaned_devices(self) -> None:
+        """Remove devices that no longer have a corresponding medication."""
+        device_registry = dr.async_get(self.hass)
+        valid_device_ids = {f"{self.entry_id}_{med['id']}" for med in self._medications}
+        for dev in dr.async_entries_for_config_entry(device_registry, self.entry_id):
+            # Check if this device corresponds to a known medication
+            dev_med_ids = {
+                ident[1] for ident in dev.identifiers
+                if ident[0] == DOMAIN
+            }
+            if not any(d in valid_device_ids for d in dev_med_ids):
+                _LOGGER.debug("Removing orphaned device %s", dev.name)
+                device_registry.async_remove_device(dev.id)
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Recalculate derived state for all medications, then check notifications."""
+        now = dt_util.now()
+        result: dict[str, Any] = {}
+        for med in self._medications:
+            result[med["id"]] = self._build_med_state(med, now)
+
+        if self._notifier is not None:
+            try:
+                await self._notifier.async_check_and_notify()
+            except Exception as err:
+                _LOGGER.error("Notification check failed: %s", err)
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Public accessors
+    # ------------------------------------------------------------------
+
+    @property
+    def medications(self) -> list[dict[str, Any]]:
+        return list(self._medications)
+
+    @property
+    def notification_config(self) -> dict[str, Any]:
+        return dict(self._notification_config)
+
+    def get_medication(self, med_id: str) -> dict[str, Any] | None:
+        return next((m for m in self._medications if m["id"] == med_id), None)
+
+    def get_med_state(self, med_id: str) -> dict[str, Any]:
+        if self.data and med_id in self.data:
+            return self.data[med_id]
+        med = self.get_medication(med_id)
+        if med:
+            return self._build_med_state(med, dt_util.now())
+        return {}
+
+    # ------------------------------------------------------------------
+    # Medication CRUD
+    # ------------------------------------------------------------------
+
+    async def async_add_medication(self, config: dict[str, Any]) -> str:
+        med_id = str(uuid.uuid4())
+        entry = {
+            "id": med_id,
+            "name": config["name"],
+            "dose": config.get("dose", ""),
+            "med_type": config.get("med_type", MED_TYPE_SCHEDULED),
+            "times": config.get("times", []),
+            "days": config.get("days", []),
+            "notes": config.get("notes", ""),
+            "as_needed_max_per_day": config.get("as_needed_max_per_day", DEFAULT_AS_NEEDED_MAX_PER_DAY),
+            "as_needed_max_per_24h": config.get("as_needed_max_per_24h", DEFAULT_AS_NEEDED_MAX_PER_24H),
+            "as_needed_min_hours": config.get("as_needed_min_hours", DEFAULT_AS_NEEDED_MIN_HOURS),
+            CONF_STOCK_TRACKING_ENABLED: config.get(CONF_STOCK_TRACKING_ENABLED, False),
+            CONF_CURRENT_STOCK: config.get(CONF_CURRENT_STOCK),
+            CONF_STOCK_PER_DOSE: config.get(CONF_STOCK_PER_DOSE, DEFAULT_STOCK_PER_DOSE),
+            CONF_STOCK_LOW_THRESHOLD: config.get(CONF_STOCK_LOW_THRESHOLD, DEFAULT_STOCK_LOW_THRESHOLD),
+        }
+        self._medications.append(entry)
+        await self._async_save()
+        await self.async_refresh()
+        return med_id
+
+    async def async_update_medication(self, med_id: str, config: dict[str, Any]) -> bool:
+        for i, med in enumerate(self._medications):
+            if med["id"] == med_id:
+                self._medications[i] = {
+                    "id": med_id,
+                    "name": config.get("name", med["name"]),
+                    "dose": config.get("dose", med["dose"]),
+                    "med_type": config.get("med_type", med.get("med_type", MED_TYPE_SCHEDULED)),
+                    "times": config.get("times", med["times"]),
+                    "days": config.get("days", med["days"]),
+                    "notes": config.get("notes", med["notes"]),
+                    "as_needed_max_per_day": config.get("as_needed_max_per_day", med.get("as_needed_max_per_day", DEFAULT_AS_NEEDED_MAX_PER_DAY)),
+                    "as_needed_max_per_24h": config.get("as_needed_max_per_24h", med.get("as_needed_max_per_24h", DEFAULT_AS_NEEDED_MAX_PER_24H)),
+                    "as_needed_min_hours": config.get("as_needed_min_hours", med.get("as_needed_min_hours", DEFAULT_AS_NEEDED_MIN_HOURS)),
+                    CONF_STOCK_TRACKING_ENABLED: config.get(
+                        CONF_STOCK_TRACKING_ENABLED, med.get(CONF_STOCK_TRACKING_ENABLED, False)
+                    ),
+                    CONF_CURRENT_STOCK: config.get(
+                        CONF_CURRENT_STOCK, med.get(CONF_CURRENT_STOCK)
+                    ),
+                    CONF_STOCK_PER_DOSE: config.get(
+                        CONF_STOCK_PER_DOSE, med.get(CONF_STOCK_PER_DOSE, DEFAULT_STOCK_PER_DOSE)
+                    ),
+                    CONF_STOCK_LOW_THRESHOLD: config.get(
+                        CONF_STOCK_LOW_THRESHOLD,
+                        med.get(CONF_STOCK_LOW_THRESHOLD, DEFAULT_STOCK_LOW_THRESHOLD),
+                    ),
+                    # Preserve notification overrides
+                    "notification_overrides": config.get(
+                        "notification_overrides",
+                        med.get("notification_overrides", {}),
+                    ),
+                }
+                await self._async_save()
+                await self.async_refresh()
+                return True
+        return False
+
+    async def async_remove_medication(self, med_id: str) -> bool:
+        before = len(self._medications)
+        self._medications = [m for m in self._medications if m["id"] != med_id]
+        if len(self._medications) < before:
+            self._dose_log.pop(med_id, None)
+            await self._async_save()
+            # Remove all entities associated with this medication from the registry
+            entity_registry = er.async_get(self.hass)
+            entries_to_remove = [
+                entry for entry in er.async_entries_for_config_entry(
+                    entity_registry, self.entry_id
+                )
+                if entry.unique_id.startswith(f"{self.entry_id}_{med_id}_")
+            ]
+            for entry in entries_to_remove:
+                entity_registry.async_remove(entry.entity_id)
+            # Remove the device itself
+            device_registry = dr.async_get(self.hass)
+            # Try direct identifier lookup first, then fall back to scanning
+            device = device_registry.async_get_device(
+                identifiers={(DOMAIN, f"{self.entry_id}_{med_id}")}
+            )
+            if not device:
+                for dev in dr.async_entries_for_config_entry(device_registry, self.entry_id):
+                    if any(med_id in str(ident) for ident in dev.identifiers):
+                        device = dev
+                        break
+            if device:
+                device_registry.async_remove_device(device.id)
+            await self.async_refresh()
+            return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Notification config
+    # ------------------------------------------------------------------
+
+    async def async_update_notification_config(self, config: dict[str, Any]) -> None:
+        """Persist global notification settings."""
+        self._notification_config = config
+        await self._async_save()
+
+    async def async_update_med_notification_overrides(
+        self, med_id: str, overrides: dict[str, Any]
+    ) -> bool:
+        """Persist per-medication notification overrides."""
+        for i, med in enumerate(self._medications):
+            if med["id"] == med_id:
+                self._medications[i] = {**med, "notification_overrides": overrides}
+                await self._async_save()
+                return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Dose logging
+    # ------------------------------------------------------------------
+
+    async def async_mark_taken(
+        self,
+        med_id: str,
+        taken_at: datetime | None = None,
+        scheduled_time: str | None = None,
+    ) -> bool:
+        med = self.get_medication(med_id)
+        if not med:
+            return False
+        now = taken_at or dt_util.now()
+        entry = {
+            "date": now.date().isoformat(),
+            "taken_at": now.isoformat(),
+            "scheduled_time": scheduled_time,
+            "action": "taken",
+        }
+        self._dose_log.setdefault(med_id, []).append(entry)
+
+        if med.get(CONF_STOCK_TRACKING_ENABLED) and med.get(CONF_CURRENT_STOCK) is not None:
+            per_dose = med.get(CONF_STOCK_PER_DOSE, DEFAULT_STOCK_PER_DOSE)
+            new_stock = max(0.0, round(med[CONF_CURRENT_STOCK] - per_dose, 2))
+            for i, m in enumerate(self._medications):
+                if m["id"] == med_id:
+                    self._medications[i] = {**m, CONF_CURRENT_STOCK: new_stock}
+                    break
+
+        await self._async_save()
+        await self.async_refresh()
+
+        if self._notifier is not None:
+            try:
+                await self._notifier.async_notify_taken(med_id)
+            except Exception as err:
+                _LOGGER.error("Taken notification failed: %s", err)
+
+        return True
+
+    async def async_mark_skipped(
+        self,
+        med_id: str,
+        scheduled_time: str | None = None,
+    ) -> bool:
+        if not self.get_medication(med_id):
+            return False
+        entry = {
+            "date": date.today().isoformat(),
+            "taken_at": None,
+            "scheduled_time": scheduled_time,
+            "action": "skipped",
+        }
+        self._dose_log.setdefault(med_id, []).append(entry)
+        await self._async_save()
+        await self.async_refresh()
+
+        if self._notifier is not None:
+            try:
+                await self._notifier.async_notify_skipped(med_id)
+            except Exception as err:
+                _LOGGER.error("Skipped notification cleanup failed: %s", err)
+
+        return True
+
+    async def async_reset_today(self, med_id: str) -> bool:
+        if not self.get_medication(med_id):
+            return False
+        today = date.today().isoformat()
+        self._dose_log[med_id] = [
+            e for e in self._dose_log.get(med_id, []) if e.get("date") != today
+        ]
+        await self._async_save()
+        await self.async_refresh()
+        return True
+
+    async def async_adjust_stock(self, med_id: str, amount: float) -> bool:
+        """Add to (or subtract from) a medication's current stock level."""
+        med = self.get_medication(med_id)
+        if not med or not med.get(CONF_STOCK_TRACKING_ENABLED):
+            return False
+        current = med.get(CONF_CURRENT_STOCK) or 0
+        return await self._async_write_stock(med_id, current + amount)
+
+    async def async_set_stock(self, med_id: str, value: float) -> bool:
+        """Set a medication's current stock to an absolute value."""
+        med = self.get_medication(med_id)
+        if not med or not med.get(CONF_STOCK_TRACKING_ENABLED):
+            return False
+        return await self._async_write_stock(med_id, value)
+
+    async def _async_write_stock(self, med_id: str, new_value: float) -> bool:
+        for i, med in enumerate(self._medications):
+            if med["id"] == med_id:
+                new_stock = max(0.0, round(new_value, 2))
+                self._medications[i] = {**med, CONF_CURRENT_STOCK: new_stock}
+                await self._async_save()
+                await self.async_refresh()
+                return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Internal state calculation
+    # ------------------------------------------------------------------
+
+    def _build_med_state(self, med: dict[str, Any], now: datetime) -> dict[str, Any]:
+        if med.get("med_type") == MED_TYPE_AS_NEEDED:
+            return self._build_as_needed_state(med, now)
+        return self._build_scheduled_state(med, now)
+
+    def _build_scheduled_state(self, med: dict[str, Any], now: datetime) -> dict[str, Any]:
+        today = now.date()
+        today_str = today.isoformat()
+        scheduled_times: list[str] = med.get("times", [])
+        days: list[int] = med.get("days", [])
+
+        scheduled_today = not days or (now.weekday() in days)
+
+        today_entries = [
+            e for e in self._dose_log.get(med["id"], []) if e.get("date") == today_str
+        ]
+        taken_entries = [e for e in today_entries if e.get("action") == "taken"]
+        skipped_entries = [e for e in today_entries if e.get("action") == "skipped"]
+
+        next_dose_dt: datetime | None = None
+        next_dose_time_str: str | None = None
+        # Collect all slots already handled today (taken or skipped)
+        handled_times: set[str] = {
+            e["scheduled_time"]
+            for e in today_entries
+            if e.get("scheduled_time")
+        }
+        for t_str in sorted(scheduled_times):
+            try:
+                t = time.fromisoformat(t_str)
+            except ValueError:
+                continue
+            candidate = datetime.combine(today, t, tzinfo=now.tzinfo)
+            if candidate > now and t_str not in handled_times:
+                next_dose_dt = candidate
+                next_dose_time_str = t_str
+                break
+
+        if next_dose_dt is None and scheduled_times:
+            for days_ahead in range(1, 8):
+                future_date = today + timedelta(days=days_ahead)
+                if not days or (future_date.weekday() in days):
+                    t_str = sorted(scheduled_times)[0]
+                    try:
+                        t = time.fromisoformat(t_str)
+                        next_dose_dt = datetime.combine(future_date, t, tzinfo=now.tzinfo)
+                        next_dose_time_str = t_str
+                    except ValueError:
+                        pass
+                    break
+
+        is_overdue = False
+        overdue_since: str | None = None
+        is_due_now = False
+        due_at_time: str | None = None
+        overdue_repeat_minutes = self._notification_config.get(
+            CONF_NOTIF_OVERDUE_REPEAT_MINUTES, DEFAULT_OVERDUE_REPEAT_MINUTES
+        )
+        if scheduled_today:
+            for t_str in sorted(scheduled_times):
+                try:
+                    t = time.fromisoformat(t_str)
+                except ValueError:
+                    continue
+                scheduled_dt = datetime.combine(today, t, tzinfo=now.tzinfo)
+                grace_dt = scheduled_dt + timedelta(minutes=overdue_repeat_minutes)
+                if now > grace_dt:
+                    handled = any(e.get("scheduled_time") == t_str for e in today_entries)
+                    if not handled:
+                        is_overdue = True
+                        overdue_since = scheduled_dt.isoformat()
+                        break
+                elif scheduled_dt <= now:
+                    handled = any(e.get("scheduled_time") == t_str for e in today_entries)
+                    if not handled:
+                        is_due_now = True
+                        due_at_time = scheduled_dt.isoformat()
+                        break
+
+        is_due_soon = False
+        if next_dose_dt is not None:
+            minutes_until = (next_dose_dt - now).total_seconds() / 60
+            is_due_soon = 0 <= minutes_until <= DUE_SOON_MINUTES
+
+        last_taken: str | None = None
+        if taken_entries:
+            last_taken = max(
+                (e["taken_at"] for e in taken_entries if e.get("taken_at")),
+                default=None,
+            )
+
+        streak = self._calculate_streak(med["id"], today)
+        stock_state = self._build_stock_state(med)
+
+        return {
+            "name": med["name"],
+            "dose": med.get("dose", ""),
+            "times": scheduled_times,
+            "days": days,
+            "notes": med.get("notes", ""),
+            "scheduled_today": scheduled_today,
+            "taken_today": len(taken_entries),
+            "skipped_today": len(skipped_entries),
+            "doses_scheduled_today": len(scheduled_times) if scheduled_today else 0,
+            "is_overdue": is_overdue,
+            "overdue_since": overdue_since,
+            "is_due_now": is_due_now,
+            "due_at_time": due_at_time,
+            "is_due_soon": is_due_soon,
+            "next_dose": next_dose_dt.isoformat() if next_dose_dt else None,
+            "next_dose_time": next_dose_time_str,
+            "last_taken": last_taken,
+            "streak": streak,
+            **stock_state,
+        }
+
+    def _build_as_needed_state(self, med: dict[str, Any], now: datetime) -> dict[str, Any]:
+        """Derive state for a PRN (as-needed) medication."""
+        today = now.date()
+        today_str = today.isoformat()
+
+        max_per_day: int = med.get("as_needed_max_per_day", DEFAULT_AS_NEEDED_MAX_PER_DAY)
+        max_per_24h: int = med.get("as_needed_max_per_24h", DEFAULT_AS_NEEDED_MAX_PER_24H)
+        min_hours: float = med.get("as_needed_min_hours", DEFAULT_AS_NEEDED_MIN_HOURS)
+
+        # All log entries (not just today) needed for 24h rolling window
+        all_entries = self._dose_log.get(med["id"], [])
+        taken_entries_all = [e for e in all_entries if e.get("action") == "taken" and e.get("taken_at")]
+
+        # Today's taken entries
+        today_entries = [e for e in all_entries if e.get("date") == today_str]
+        taken_today = [e for e in today_entries if e.get("action") == "taken"]
+
+        # 24h rolling window
+        window_start = now - timedelta(hours=24)
+        taken_24h = []
+        for e in taken_entries_all:
+            if not e.get("taken_at"):
+                continue
+            try:
+                if datetime.fromisoformat(e["taken_at"]) >= window_start:
+                    taken_24h.append(e)
+            except ValueError:
+                _LOGGER.warning("Skipping malformed taken_at timestamp: %s", e.get("taken_at"))
+
+        # Last taken
+        last_taken: str | None = None
+        last_taken_dt: datetime | None = None
+        if taken_entries_all:
+            last_taken = max(e["taken_at"] for e in taken_entries_all)
+            if last_taken:
+                try:
+                    last_taken_dt = datetime.fromisoformat(last_taken)
+                except ValueError:
+                    _LOGGER.warning("Skipping malformed last taken timestamp: %s", last_taken)
+
+        # Determine availability
+        is_available = True
+        next_available_dt: datetime | None = None
+
+        # Check daily max
+        if len(taken_today) >= max_per_day:
+            is_available = False
+            # Not available again until tomorrow
+            next_available_dt = None
+
+        # Check 24h rolling max
+        elif len(taken_24h) >= max_per_24h:
+            is_available = False
+            # Available when oldest dose in window falls out
+            oldest_in_window = min(
+                datetime.fromisoformat(e["taken_at"]) for e in taken_24h
+            )
+            next_available_dt = oldest_in_window + timedelta(hours=24)
+
+        # Check min hours between doses
+        elif last_taken_dt is not None:
+            min_delta = timedelta(hours=min_hours)
+            earliest_next = last_taken_dt + min_delta
+            if now < earliest_next:
+                is_available = False
+                next_available_dt = earliest_next
+
+        streak = self._calculate_streak(med["id"], today)
+        stock_state = self._build_stock_state(med)
+
+        return {
+            "name": med["name"],
+            "dose": med.get("dose", ""),
+            "notes": med.get("notes", ""),
+            "med_type": MED_TYPE_AS_NEEDED,
+            "as_needed_max_per_day": max_per_day,
+            "as_needed_max_per_24h": max_per_24h,
+            "as_needed_min_hours": min_hours,
+            "is_available": is_available,
+            "next_available": next_available_dt.isoformat() if next_available_dt else None,
+            "doses_taken_today": len(taken_today),
+            "doses_taken_24h": len(taken_24h),
+            "last_taken": last_taken,
+            "streak": streak,
+            # Scheduled fields not applicable — set to safe defaults
+            "times": [],
+            "days": [],
+            "scheduled_today": False,
+            "taken_today": len(taken_today),
+            "skipped_today": 0,
+            "doses_scheduled_today": 0,
+            "is_overdue": False,
+            "overdue_since": None,
+            "is_due_soon": False,
+            "next_dose": None,
+            "next_dose_time": None,
+            **stock_state,
+        }
+
+    def _build_stock_state(self, med: dict[str, Any]) -> dict[str, Any]:
+        """Derive stock-tracking fields shared by scheduled and as-needed medications."""
+        tracking_enabled = bool(med.get(CONF_STOCK_TRACKING_ENABLED, False))
+        current_stock = med.get(CONF_CURRENT_STOCK)
+        stock_per_dose = med.get(CONF_STOCK_PER_DOSE, DEFAULT_STOCK_PER_DOSE)
+        stock_low_threshold = med.get(CONF_STOCK_LOW_THRESHOLD, DEFAULT_STOCK_LOW_THRESHOLD)
+        is_low_stock = (
+            tracking_enabled and current_stock is not None and current_stock <= stock_low_threshold
+        )
+        return {
+            "stock_tracking_enabled": tracking_enabled,
+            "current_stock": current_stock,
+            "stock_per_dose": stock_per_dose,
+            "stock_low_threshold": stock_low_threshold,
+            "is_low_stock": is_low_stock,
+        }
+
+    def _calculate_streak(self, med_id: str, today: date) -> int:
+        all_entries = self._dose_log.get(med_id, [])
+        taken_dates: set[str] = {e["date"] for e in all_entries if e.get("action") == "taken"}
+        streak = 0
+        check_date = today
+        while check_date.isoformat() in taken_dates:
+            streak += 1
+            check_date -= timedelta(days=1)
+        return streak
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    async def _async_save(self) -> None:
+        cutoff = (date.today() - timedelta(days=90)).isoformat()
+        pruned_log = {
+            med_id: [e for e in entries if e.get("date", "") >= cutoff]
+            for med_id, entries in self._dose_log.items()
+        }
+        await self._store.async_save(
+            {
+                "medications": self._medications,
+                "dose_log": pruned_log,
+                CONF_NOTIFICATIONS: self._notification_config,
+            }
+        )

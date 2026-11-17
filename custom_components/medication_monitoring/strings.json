@@ -1,0 +1,210 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Medication Monitoring",
+        "description": "Existing Medication Tracker profiles from the original project or previous fork are detected automatically, including saved data from removed installations. Select a profile to import, or leave it blank for a new, empty tracker.",
+        "data": {
+          "title": "Tracker name",
+          "legacy_entry_id": "Import an existing Medication Tracker"
+        },
+        "data_description": {
+          "legacy_entry_id": "A single detected profile is preselected. You can review the import before confirming. An active old tracker is disabled only after confirmation to prevent duplicate reminders."
+        }
+      },
+      "legacy_confirm": {
+        "title": "Import Medication Tracker",
+        "description": "Import **{count} medications** from **{tracker}**: {medications}.\n\nSchedules, doses, notes, stock, dose history, and notification settings are copied. Confirming disables an active old tracker; its saved data is preserved.\n\nThe new domain creates new entities. Update existing automations to `medication_monitoring.*` and dashboard cards to `custom:medication-monitoring-card`. To roll back, disable Medication Monitoring before re-enabling the old tracker."
+      }
+    },
+    "abort": {
+      "already_configured": "This tracker is already configured."
+    },
+    "error": {
+      "legacy_entry_unavailable": "The old tracker data is unavailable, invalid, or still in use. Check the old profile and restart setup. A tracker already disabled during import stays disabled.",
+      "legacy_disable_failed": "The old tracker could not be fully stopped. Nothing was imported. Restart Home Assistant and try again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Manage tracker",
+        "description": "You have {count} medication(s) configured.",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "add_medication": {
+        "title": "Add medication",
+        "data": {
+          "name": "Medication name",
+          "dose": "Dose (e.g. 10mg)",
+          "med_type": "Medication type",
+          "notes": "Notes"
+        }
+      },
+      "edit_medication": {
+        "title": "Edit medication",
+        "data": {
+          "name": "Medication name",
+          "dose": "Dose",
+          "med_type": "Medication type",
+          "notes": "Notes"
+        }
+      },
+      "remove_medication": {
+        "title": "Remove medication",
+        "data": {
+          "medication_id": "Select medication to remove"
+        }
+      },
+      "notifications": {
+        "title": "Notifications",
+        "description": "Configure when and how you are notified about medications.",
+        "data": {
+          "notify_target": "Notify service (e.g. notify.persistent_notification)",
+          "due_enabled": "Alert when a dose is due",
+          "overdue_enabled": "Repeat reminder every N minutes until taken or skipped",
+          "overdue_repeat_minutes": "Overdue after / repeat every (minutes)",
+          "overdue_max_repeats": "Stop repeating after this many reminders",
+          "due_soon_enabled": "Alert when a dose is due soon",
+          "taken_enabled": "Confirm when a dose is marked taken",
+          "low_stock_enabled": "Alert when stock is running low",
+          "action": "Next"
+        }
+      },
+      "notification_due_message": {
+        "title": "Due now message template",
+        "description": "Customise the message sent when a dose is due.\n\n**Notification Sounds** — iOS and Android control sound differently, so each has its own options below. ⚠️ iOS Critical bypasses mute and Do Not Disturb, but only works once you've granted the Home Assistant app \"Critical Alerts\" permission in iOS Settings → Notifications → Home Assistant. Android Critical routes to a dedicated \"Critical Medication\" channel — Android locks a channel's sound/importance the first time it's created, so adjust it afterward in your phone's own notification settings if needed.",
+        "data": {
+          "due_title": "Notification title",
+          "due_message": "Notification message",
+          "due_ios_sound_mode": "iOS — Sound behavior",
+          "due_ios_sound_name": "iOS — Time-sensitive sound name (used only when set to Time-sensitive above)",
+          "due_android_sound_mode": "Android — Sound behavior",
+          "due_android_importance": "Android — Channel importance (used only when set to Critical above)"
+        }
+      },
+      "notification_overdue_message": {
+        "title": "Overdue message template",
+        "description": "Customise the message sent when a dose is overdue.\n\n**Notification Sounds** — iOS and Android control sound differently, so each has its own options below. ⚠️ iOS Critical bypasses mute and Do Not Disturb, but only works once you've granted the Home Assistant app \"Critical Alerts\" permission in iOS Settings → Notifications → Home Assistant. Android Critical routes to a dedicated \"Critical Medication\" channel — Android locks a channel's sound/importance the first time it's created, so adjust it afterward in your phone's own notification settings if needed.",
+        "data": {
+          "overdue_title": "Notification title",
+          "overdue_message": "Notification message",
+          "overdue_ios_sound_mode": "iOS — Sound behavior",
+          "overdue_ios_sound_name": "iOS — Time-sensitive sound name (used only when set to Time-sensitive above)",
+          "overdue_android_sound_mode": "Android — Sound behavior",
+          "overdue_android_importance": "Android — Channel importance (used only when set to Critical above)"
+        }
+      },
+      "notification_due_soon_message": {
+        "title": "Due soon message template",
+        "description": "Customise the message sent when a dose is due soon.\n\n**Notification Sounds** — iOS and Android control sound differently, so each has its own options below. ⚠️ iOS Critical bypasses mute and Do Not Disturb, but only works once you've granted the Home Assistant app \"Critical Alerts\" permission in iOS Settings → Notifications → Home Assistant. Android Critical routes to a dedicated \"Critical Medication\" channel — Android locks a channel's sound/importance the first time it's created, so adjust it afterward in your phone's own notification settings if needed.",
+        "data": {
+          "due_soon_title": "Notification title",
+          "due_soon_message": "Notification message",
+          "due_soon_ios_sound_mode": "iOS — Sound behavior",
+          "due_soon_ios_sound_name": "iOS — Time-sensitive sound name (used only when set to Time-sensitive above)",
+          "due_soon_android_sound_mode": "Android — Sound behavior",
+          "due_soon_android_importance": "Android — Channel importance (used only when set to Critical above)"
+        }
+      },
+      "notification_taken_message": {
+        "title": "Taken confirmation message template",
+        "description": "Customise the message sent when a dose is marked as taken.\n\n**Notification Sounds** — iOS and Android control sound differently, so each has its own options below. ⚠️ iOS Critical bypasses mute and Do Not Disturb, but only works once you've granted the Home Assistant app \"Critical Alerts\" permission in iOS Settings → Notifications → Home Assistant. Android Critical routes to a dedicated \"Critical Medication\" channel — Android locks a channel's sound/importance the first time it's created, so adjust it afterward in your phone's own notification settings if needed.",
+        "data": {
+          "taken_title": "Notification title",
+          "taken_message": "Notification message",
+          "taken_ios_sound_mode": "iOS — Sound behavior",
+          "taken_ios_sound_name": "iOS — Time-sensitive sound name (used only when set to Time-sensitive above)",
+          "taken_android_sound_mode": "Android — Sound behavior",
+          "taken_android_importance": "Android — Channel importance (used only when set to Critical above)"
+        }
+      },
+      "notification_low_stock_message": {
+        "title": "Low stock message template",
+        "description": "Customise the message sent when a medication's stock runs low. You can use {stock} to show the remaining quantity.\n\n**Notification Sounds** — iOS and Android control sound differently, so each has its own options below. ⚠️ iOS Critical bypasses mute and Do Not Disturb, but only works once you've granted the Home Assistant app \"Critical Alerts\" permission in iOS Settings → Notifications → Home Assistant. Android Critical routes to a dedicated \"Critical Medication\" channel — Android locks a channel's sound/importance the first time it's created, so adjust it afterward in your phone's own notification settings if needed.",
+        "data": {
+          "low_stock_title": "Notification title",
+          "low_stock_message": "Notification message",
+          "low_stock_ios_sound_mode": "iOS — Sound behavior",
+          "low_stock_ios_sound_name": "iOS — Time-sensitive sound name (used only when set to Time-sensitive above)",
+          "low_stock_android_sound_mode": "Android — Sound behavior",
+          "low_stock_android_importance": "Android — Channel importance (used only when set to Critical above)"
+        }
+      },
+      "notification_per_medication": {
+        "title": "Per-medication overrides",
+        "description": "Select a medication to configure individual notification settings.",
+        "data": {
+          "medication_id": "Medication"
+        }
+      },
+      "notification_med_overrides": {
+        "title": "Overrides for {medication}",
+        "description": "Toggle notifications for this medication. These override the global settings above.",
+        "data": {
+          "override_due": "Alert when due",
+          "override_overdue": "Alert when overdue",
+          "override_due_soon": "Alert when due soon",
+          "override_taken": "Confirm when taken",
+          "override_low_stock": "Alert when stock is low"
+        }
+      },
+      "add_medication_scheduled": {
+        "title": "Scheduled times",
+        "description": "Set the times and days this medication should be taken.",
+        "data": {
+          "times": "Scheduled times (HH:MM, comma-separated)",
+          "days": "Days (mon, tue, wed… or leave blank for every day)",
+          "stock_tracking_enabled": "Track stock for this medication",
+          "current_stock": "Current stock",
+          "stock_per_dose": "Units used per dose",
+          "stock_low_threshold": "Alert when stock falls to or below"
+        }
+      },
+      "add_medication_as_needed": {
+        "title": "As-needed limits",
+        "description": "Set the dosing limits for this as-needed medication.",
+        "data": {
+          "as_needed_max_per_day": "Max doses per day",
+          "as_needed_max_per_24h": "Max doses per 24 hours (rolling)",
+          "as_needed_min_hours": "Minimum hours between doses",
+          "stock_tracking_enabled": "Track stock for this medication",
+          "current_stock": "Current stock",
+          "stock_per_dose": "Units used per dose",
+          "stock_low_threshold": "Alert when stock falls to or below"
+        }
+      },
+      "edit_medication_scheduled": {
+        "title": "Scheduled times",
+        "description": "Edit the times and days this medication should be taken.",
+        "data": {
+          "times": "Scheduled times (HH:MM, comma-separated)",
+          "days": "Days (mon, tue, wed… or leave blank for every day)",
+          "stock_tracking_enabled": "Track stock for this medication",
+          "current_stock": "Current stock",
+          "stock_per_dose": "Units used per dose",
+          "stock_low_threshold": "Alert when stock falls to or below"
+        }
+      },
+      "edit_medication_as_needed": {
+        "title": "As-needed limits",
+        "description": "Edit the dosing limits for this as-needed medication.",
+        "data": {
+          "as_needed_max_per_day": "Max doses per day",
+          "as_needed_max_per_24h": "Max doses per 24 hours (rolling)",
+          "as_needed_min_hours": "Minimum hours between doses",
+          "stock_tracking_enabled": "Track stock for this medication",
+          "current_stock": "Current stock",
+          "stock_per_dose": "Units used per dose",
+          "stock_low_threshold": "Alert when stock falls to or below"
+        }
+      }
+    },
+    "error": {
+      "invalid_time_format": "Invalid time format. Use HH:MM, comma-separated (e.g. 08:00, 20:00).",
+      "invalid_day_format": "Invalid day format. Use mon/tue/wed/thu/fri/sat/sun, comma-separated."
+    }
+  }
+}

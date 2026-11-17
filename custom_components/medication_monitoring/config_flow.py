@@ -1,0 +1,1200 @@
+"""Config flow for Medication Monitoring."""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING, Any
+
+import voluptuous as vol
+
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant import config_entries
+from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.selector import NumberSelector
+
+from .compat import get_coordinator
+from .const import (
+    ANDROID_IMPORTANCE_OPTIONS,
+    ANDROID_SOUND_MODE_OPTIONS,
+    CONF_AS_NEEDED_MAX_PER_24H,
+    CONF_AS_NEEDED_MAX_PER_DAY,
+    CONF_AS_NEEDED_MIN_HOURS,
+    CONF_CURRENT_STOCK,
+    CONF_MED_DAYS,
+    CONF_MED_DOSE,
+    CONF_MED_NAME,
+    CONF_MED_NOTES,
+    CONF_MED_TIMES,
+    CONF_MED_TYPE,
+    CONF_LEGACY_ENTRY_ID,
+    CONF_MEDICATIONS,
+    CONF_NOTIF_DUE_ENABLED,
+    CONF_NOTIF_DUE_MESSAGE,
+    CONF_NOTIF_DUE_SOON_ENABLED,
+    CONF_NOTIF_DUE_SOON_MESSAGE,
+    CONF_NOTIF_DUE_SOON_TITLE,
+    CONF_NOTIF_DUE_TITLE,
+    CONF_NOTIF_LOW_STOCK_ENABLED,
+    CONF_NOTIF_LOW_STOCK_MESSAGE,
+    CONF_NOTIF_LOW_STOCK_TITLE,
+    CONF_NOTIF_OVERDUE_ENABLED,
+    CONF_NOTIF_OVERDUE_MAX_REPEATS,
+    CONF_NOTIF_OVERDUE_MESSAGE,
+    CONF_NOTIF_OVERDUE_REPEAT_MINUTES,
+    CONF_NOTIF_OVERDUE_TITLE,
+    CONF_NOTIF_OVERRIDE_DUE,
+    CONF_NOTIF_OVERRIDE_DUE_SOON,
+    CONF_NOTIF_OVERRIDE_LOW_STOCK,
+    CONF_NOTIF_OVERRIDE_OVERDUE,
+    CONF_NOTIF_OVERRIDE_TAKEN,
+    CONF_NOTIF_OVERRIDES,
+    CONF_NOTIF_TAKEN_ENABLED,
+    CONF_NOTIF_TAKEN_MESSAGE,
+    CONF_NOTIF_TAKEN_TITLE,
+    CONF_NOTIF_TARGET,
+    CONF_STOCK_LOW_THRESHOLD,
+    CONF_STOCK_PER_DOSE,
+    CONF_STOCK_TRACKING_ENABLED,
+    DEFAULT_ANDROID_IMPORTANCE,
+    DEFAULT_ANDROID_SOUND_MODE,
+    DEFAULT_AS_NEEDED_MAX_PER_24H,
+    DEFAULT_AS_NEEDED_MAX_PER_DAY,
+    DEFAULT_AS_NEEDED_MIN_HOURS,
+    DEFAULT_IOS_SOUND_MODE,
+    DEFAULT_IOS_SOUND_NAME,
+    DEFAULT_NOTIFY_TARGET,
+    DEFAULT_OVERDUE_MAX_REPEATS,
+    DEFAULT_OVERDUE_REPEAT_MINUTES,
+    DEFAULT_STOCK_LOW_THRESHOLD,
+    DEFAULT_STOCK_PER_DOSE,
+    DOMAIN,
+    IOS_SOUND_MODE_OPTIONS,
+    MED_TYPE_AS_NEEDED,
+    MED_TYPE_SCHEDULED,
+    NOTIF_SOUND_KEYS_BY_TYPE,
+)
+
+from .legacy import async_find_legacy_sources, async_load_legacy_data
+from .notification_text import notification_template
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigFlowResult
+
+_TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
+
+
+def _validate_times(times_raw: str) -> list[str]:
+    """Parse and validate a comma-separated list of HH:MM times."""
+    times = [t.strip() for t in times_raw.split(",") if t.strip()]
+    for t in times:
+        if not _TIME_PATTERN.match(t):
+            raise vol.Invalid(f"Invalid time format: '{t}'. Use HH:MM.")
+    return times
+
+
+def _validate_days(days_raw: str) -> list[int]:
+    """Parse a comma-separated list of day abbreviations or ints (0=Mon..6=Sun)."""
+    if not days_raw.strip():
+        return []
+    day_map = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+    result: list[int] = []
+    for part in days_raw.split(","):
+        part = part.strip().lower()
+        if part in day_map:
+            result.append(day_map[part])
+        elif part.isdigit() and 0 <= int(part) <= 6:
+            result.append(int(part))
+        else:
+            raise vol.Invalid(
+                f"Invalid day '{part}'. Use mon/tue/wed/thu/fri/sat/sun or 0-6."
+            )
+    return sorted(set(result))
+
+
+def _stock_schema_fields(med: dict[str, Any] | None = None) -> dict[Any, Any]:
+    """Return the shared schema fields for optional per-medication stock tracking."""
+    med = med or {}
+    return {
+        vol.Optional(
+            CONF_STOCK_TRACKING_ENABLED,
+            default=med.get(CONF_STOCK_TRACKING_ENABLED, False),
+        ): bool,
+        vol.Optional(
+            CONF_CURRENT_STOCK,
+            default=med.get(CONF_CURRENT_STOCK) or 0,
+        ): vol.All(vol.Coerce(float), vol.Range(min=0)),
+        vol.Optional(
+            CONF_STOCK_PER_DOSE,
+            default=med.get(CONF_STOCK_PER_DOSE, DEFAULT_STOCK_PER_DOSE),
+        ): vol.All(vol.Coerce(float), vol.Range(min=0.01)),
+        vol.Optional(
+            CONF_STOCK_LOW_THRESHOLD,
+            default=med.get(CONF_STOCK_LOW_THRESHOLD, DEFAULT_STOCK_LOW_THRESHOLD),
+        ): vol.All(vol.Coerce(float), vol.Range(min=0)),
+    }
+
+
+def _stock_config_from_input(
+    user_input: dict[str, Any], existing_med: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Extract stock-tracking fields from options flow form input.
+
+    current_stock is only taken from the submitted form when tracking is being
+    newly enabled (adding a medication, or flipping tracking on for the first
+    time). Once tracking is already on, the form's snapshot of current_stock
+    (taken when the form was rendered) is stale relative to the coordinator's
+    live value — which can change via dose-taking or the adjust_stock service
+    while the form is open — so we preserve the live value instead of letting
+    an unrelated edit silently revert it. Adjusting stock thereafter goes
+    through the adjust_stock service.
+    """
+    existing_med = existing_med or {}
+    was_tracking = bool(existing_med.get(CONF_STOCK_TRACKING_ENABLED, False))
+    tracking_enabled = user_input.get(CONF_STOCK_TRACKING_ENABLED, False)
+    if was_tracking and tracking_enabled:
+        current_stock = existing_med.get(CONF_CURRENT_STOCK)
+    else:
+        current_stock = user_input.get(CONF_CURRENT_STOCK)
+    return {
+        CONF_STOCK_TRACKING_ENABLED: tracking_enabled,
+        CONF_CURRENT_STOCK: current_stock,
+        CONF_STOCK_PER_DOSE: user_input.get(CONF_STOCK_PER_DOSE, DEFAULT_STOCK_PER_DOSE),
+        CONF_STOCK_LOW_THRESHOLD: user_input.get(
+            CONF_STOCK_LOW_THRESHOLD, DEFAULT_STOCK_LOW_THRESHOLD
+        ),
+    }
+
+
+def _sound_schema_fields(type_key: str, cfg: dict[str, Any]) -> dict[Any, Any]:
+    """Return the iOS/Android notification sound schema fields for one alert type."""
+    ios_mode_key, ios_name_key, android_mode_key, android_importance_key = (
+        NOTIF_SOUND_KEYS_BY_TYPE[type_key]
+    )
+    return {
+        vol.Optional(
+            ios_mode_key, default=cfg.get(ios_mode_key, DEFAULT_IOS_SOUND_MODE)
+        ): vol.In(IOS_SOUND_MODE_OPTIONS),
+        vol.Optional(
+            ios_name_key, default=cfg.get(ios_name_key, DEFAULT_IOS_SOUND_NAME)
+        ): str,
+        vol.Optional(
+            android_mode_key, default=cfg.get(android_mode_key, DEFAULT_ANDROID_SOUND_MODE)
+        ): vol.In(ANDROID_SOUND_MODE_OPTIONS),
+        vol.Optional(
+            android_importance_key,
+            default=cfg.get(android_importance_key, DEFAULT_ANDROID_IMPORTANCE),
+        ): vol.In(ANDROID_IMPORTANCE_OPTIONS),
+    }
+
+
+def _sound_config_from_input(type_key: str, user_input: dict[str, Any]) -> dict[str, Any]:
+    """Extract the iOS/Android sound fields for one alert type from form input."""
+    ios_mode_key, ios_name_key, android_mode_key, android_importance_key = (
+        NOTIF_SOUND_KEYS_BY_TYPE[type_key]
+    )
+    return {
+        ios_mode_key: user_input.get(ios_mode_key, DEFAULT_IOS_SOUND_MODE),
+        ios_name_key: user_input.get(ios_name_key, DEFAULT_IOS_SOUND_NAME),
+        android_mode_key: user_input.get(android_mode_key, DEFAULT_ANDROID_SOUND_MODE),
+        android_importance_key: user_input.get(
+            android_importance_key, DEFAULT_ANDROID_IMPORTANCE
+        ),
+    }
+
+
+def _get_notify_services(hass: Any) -> dict[str, str]:
+    """Return a dict of {service_id: label} for all notify.mobile_app_* services."""
+    services: dict[str, str] = {}
+    all_services = hass.services.async_services()
+    notify_services = all_services.get("notify", {})
+    for service_name in sorted(notify_services):
+        if service_name.startswith("mobile_app_"):
+            full_name = f"notify.{service_name}"
+            label = service_name.replace("mobile_app_", "").replace("_", " ").title()
+            services[full_name] = label
+    services[DEFAULT_NOTIFY_TARGET] = "Persistent notification (HA bell)"
+    return services
+
+
+class MedicationTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle the initial config flow."""
+
+    VERSION = 1
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        title = (user_input or {}).get("title", "").strip()
+        data: dict[str, Any] = {CONF_MEDICATIONS: []}
+        errors: dict[str, str] = {}
+        sources = await async_find_legacy_sources(self.hass)
+
+        if user_input is not None:
+            source_id = user_input.get(CONF_LEGACY_ENTRY_ID)
+            if source_id:
+                if source_id in sources:
+                    await self.async_set_unique_id(f"legacy:{source_id}")
+                    self._abort_if_unique_id_configured()
+                    self._legacy_source = sources[source_id]
+                    self._legacy_title = title
+                    return await self.async_step_legacy_confirm()
+                errors[CONF_LEGACY_ENTRY_ID] = "legacy_entry_unavailable"
+            else:
+                title = title or "Medication Monitoring"
+                await self.async_set_unique_id(title.lower().replace(" ", "_"))
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=title, data=data)
+
+        fields: dict[Any, Any] = {vol.Optional("title", default=title): str}
+        if sources:
+            default = next(iter(sources)) if len(sources) == 1 else vol.UNDEFINED
+            fields[vol.Optional(CONF_LEGACY_ENTRY_ID, default=default)] = vol.In({
+                source_id: source.title if len(sources) == 1 else f"{index}. {source.title}"
+                for index, (source_id, source) in enumerate(sources.items(), 1)
+            })
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(fields),
+            errors=errors,
+        )
+
+    async def async_step_legacy_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Preview the import and stop a running source only after confirmation."""
+        source = self._legacy_source
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._abort_if_unique_id_configured()
+            data = await async_load_legacy_data(self.hass, source.entry_id, allow_active=True)
+            if data is None:
+                errors["base"] = "legacy_entry_unavailable"
+            else:
+                entry = self.hass.config_entries.async_get_entry(source.entry_id)
+                if entry is not None and entry.disabled_by is None:
+                    disabled_user = (
+                        config_entries.ConfigEntryDisabler.USER
+                        if hasattr(config_entries, "ConfigEntryDisabler") else "user"
+                    )
+                    try:
+                        stopped = await self.hass.config_entries.async_set_disabled_by(
+                            entry.entry_id, disabled_user
+                        )
+                    except HomeAssistantError:
+                        stopped = False
+                    if not stopped:
+                        errors["base"] = "legacy_disable_failed"
+                # Re-read after unloading: the source may have saved a final dose or stock update.
+                if not errors:
+                    data = await async_load_legacy_data(self.hass, source.entry_id)
+                    if data is None:
+                        errors["base"] = "legacy_entry_unavailable"
+                    else:
+                        title = self._legacy_title or source.title
+                        if title == "Medication Tracker":
+                            title = "Medication Monitoring"
+                        return self.async_create_entry(title=title, data={
+                            CONF_MEDICATIONS: [], CONF_LEGACY_ENTRY_ID: source.entry_id,
+                        })
+        return self.async_show_form(
+            step_id="legacy_confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "tracker": source.title,
+                "count": str(len(source.medications)),
+                "medications": ", ".join(source.medications) or "—",
+            },
+            errors=errors,
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> MedicationOptionsFlow:
+        return MedicationOptionsFlow(config_entry)
+
+
+class MedicationOptionsFlow(OptionsFlow):
+    """Options flow: medications + notifications."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        self._entry = config_entry
+        self._edit_id: str | None = None
+        self._override_med_id: str | None = None
+        self._add_med_base: dict[str, Any] | None = None
+        self._edit_med_base: dict[str, Any] | None = None
+
+    # ------------------------------------------------------------------
+    # Main menu
+    # ------------------------------------------------------------------
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        meds = coordinator.medications
+
+        if user_input is not None:
+            action = user_input.get("action", "done")
+            if action == "add":
+                return await self.async_step_add_medication()
+            if action == "remove":
+                return await self.async_step_remove_medication()
+            if action == "notifications":
+                return await self.async_step_notifications()
+            if action.startswith("edit:"):
+                self._edit_id = action.split(":", 1)[1]
+                return await self.async_step_edit_medication()
+            return self.async_create_entry(title="", data={})
+
+        action_options: list[str] = ["add"]
+        for med in meds:
+            action_options.append(f"edit:{med['id']}")
+        action_options += ["remove", "notifications", "done"]
+
+        action_labels: dict[str, str] = {
+            "add": "Add new medication",
+            "notifications": "Notifications",
+            "done": "Save and Finish",
+        }
+        for med in meds:
+            action_labels[f"edit:{med['id']}"] = f"Edit: {med['name']}"
+        action_labels["remove"] = "Remove a medication"
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("action", default="done"): vol.In(action_labels),
+                }
+            ),
+            description_placeholders={"count": str(len(meds))},
+        )
+
+    # ------------------------------------------------------------------
+    # Medication: add — step 1 (name, dose, type, notes)
+    # ------------------------------------------------------------------
+
+    async def async_step_add_medication(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 1: pick name, dose, type, and notes."""
+        if user_input is not None:
+            self._add_med_base = user_input
+            if user_input.get(CONF_MED_TYPE) == MED_TYPE_AS_NEEDED:
+                return await self.async_step_add_medication_as_needed()
+            return await self.async_step_add_medication_scheduled()
+
+        return self.async_show_form(
+            step_id="add_medication",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_MED_NAME): str,
+                    vol.Optional(CONF_MED_DOSE, default=""): str,
+                    vol.Required(CONF_MED_TYPE, default=MED_TYPE_SCHEDULED): vol.In(
+                        {
+                            MED_TYPE_SCHEDULED: "Scheduled (regular times)",
+                            MED_TYPE_AS_NEEDED: "As-needed",
+                        }
+                    ),
+                    vol.Optional(CONF_MED_NOTES, default=""): str,
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Medication: add — step 2a (scheduled times + days)
+    # ------------------------------------------------------------------
+
+    async def async_step_add_medication_scheduled(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 2a: scheduled times and days."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            try:
+                times = _validate_times(user_input.get(CONF_MED_TIMES, ""))
+            except vol.Invalid:
+                errors[CONF_MED_TIMES] = "invalid_time_format"
+                times = []
+
+            try:
+                days = _validate_days(user_input.get(CONF_MED_DAYS, ""))
+            except vol.Invalid:
+                errors[CONF_MED_DAYS] = "invalid_day_format"
+                days = []
+
+            if not errors:
+                base = self._add_med_base or {}
+                coordinator = get_coordinator(self.hass, self._entry)
+                await coordinator.async_add_medication(
+                    {
+                        "name": base[CONF_MED_NAME],
+                        "dose": base.get(CONF_MED_DOSE, ""),
+                        "med_type": MED_TYPE_SCHEDULED,
+                        "times": times,
+                        "days": days,
+                        "notes": base.get(CONF_MED_NOTES, ""),
+                        **_stock_config_from_input(user_input),
+                    }
+                )
+                return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="add_medication_scheduled",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_MED_TIMES, default=""): str,
+                    vol.Optional(CONF_MED_DAYS, default=""): str,
+                    **_stock_schema_fields(),
+                }
+            ),
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Medication: add — step 2b (as-needed limits)
+    # ------------------------------------------------------------------
+
+    async def async_step_add_medication_as_needed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 2b: as-needed dosing limits."""
+        if user_input is not None:
+            base = self._add_med_base or {}
+            coordinator = get_coordinator(self.hass, self._entry)
+            await coordinator.async_add_medication(
+                {
+                    "name": base[CONF_MED_NAME],
+                    "dose": base.get(CONF_MED_DOSE, ""),
+                    "med_type": MED_TYPE_AS_NEEDED,
+                    "times": [],
+                    "days": [],
+                    "notes": base.get(CONF_MED_NOTES, ""),
+                    "as_needed_max_per_day": user_input.get(CONF_AS_NEEDED_MAX_PER_DAY, DEFAULT_AS_NEEDED_MAX_PER_DAY),
+                    "as_needed_max_per_24h": user_input.get(CONF_AS_NEEDED_MAX_PER_24H, DEFAULT_AS_NEEDED_MAX_PER_24H),
+                    "as_needed_min_hours": user_input.get(CONF_AS_NEEDED_MIN_HOURS, DEFAULT_AS_NEEDED_MIN_HOURS),
+                    **_stock_config_from_input(user_input),
+                }
+            )
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="add_medication_as_needed",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_AS_NEEDED_MAX_PER_DAY, default=DEFAULT_AS_NEEDED_MAX_PER_DAY): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=24)
+                    ),
+                    vol.Optional(CONF_AS_NEEDED_MAX_PER_24H, default=DEFAULT_AS_NEEDED_MAX_PER_24H): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=24)
+                    ),
+                    vol.Optional(CONF_AS_NEEDED_MIN_HOURS, default=DEFAULT_AS_NEEDED_MIN_HOURS): vol.All(
+                        vol.Coerce(float), vol.Range(min=0.5, max=24)
+                    ),
+                    **_stock_schema_fields(),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Medication: edit — step 1 (name, dose, type, notes)
+    # ------------------------------------------------------------------
+
+    async def async_step_edit_medication(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 1: edit name, dose, type, notes."""
+        coordinator = get_coordinator(self.hass, self._entry)
+        med = coordinator.get_medication(self._edit_id or "")
+
+        if med is None:
+            return await self.async_step_init()
+
+        if user_input is not None:
+            self._edit_med_base = user_input
+            if user_input.get(CONF_MED_TYPE) == MED_TYPE_AS_NEEDED:
+                return await self.async_step_edit_medication_as_needed()
+            return await self.async_step_edit_medication_scheduled()
+
+        return self.async_show_form(
+            step_id="edit_medication",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_MED_NAME, default=med["name"]): str,
+                    vol.Optional(CONF_MED_DOSE, default=med.get("dose", "")): str,
+                    vol.Required(CONF_MED_TYPE, default=med.get("med_type", MED_TYPE_SCHEDULED)): vol.In(
+                        {
+                            MED_TYPE_SCHEDULED: "Scheduled (regular times)",
+                            MED_TYPE_AS_NEEDED: "As-needed",
+                        }
+                    ),
+                    vol.Optional(CONF_MED_NOTES, default=med.get("notes", "")): str,
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Medication: edit — step 2a (scheduled times + days)
+    # ------------------------------------------------------------------
+
+    async def async_step_edit_medication_scheduled(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 2a: edit scheduled times and days."""
+        errors: dict[str, str] = {}
+        coordinator = get_coordinator(self.hass, self._entry)
+        med = coordinator.get_medication(self._edit_id or "")
+
+        if med is None:
+            return await self.async_step_init()
+
+        if user_input is not None:
+            try:
+                times = _validate_times(user_input.get(CONF_MED_TIMES, ""))
+            except vol.Invalid:
+                errors[CONF_MED_TIMES] = "invalid_time_format"
+                times = []
+
+            try:
+                days = _validate_days(user_input.get(CONF_MED_DAYS, ""))
+            except vol.Invalid:
+                errors[CONF_MED_DAYS] = "invalid_day_format"
+                days = []
+
+            if not errors:
+                base = self._edit_med_base or {}
+                await coordinator.async_update_medication(
+                    self._edit_id,  # type: ignore[arg-type]
+                    {
+                        "name": base[CONF_MED_NAME],
+                        "dose": base.get(CONF_MED_DOSE, ""),
+                        "med_type": MED_TYPE_SCHEDULED,
+                        "times": times,
+                        "days": days,
+                        "notes": base.get(CONF_MED_NOTES, ""),
+                        **_stock_config_from_input(user_input, med),
+                    },
+                )
+                return await self.async_step_init()
+
+        times_str = ", ".join(med.get("times", []))
+        day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+        days_str = ", ".join(day_names[d] for d in med.get("days", []))
+
+        return self.async_show_form(
+            step_id="edit_medication_scheduled",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_MED_TIMES, default=times_str): str,
+                    vol.Optional(CONF_MED_DAYS, default=days_str): str,
+                    **_stock_schema_fields(med),
+                }
+            ),
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Medication: edit — step 2b (as-needed limits)
+    # ------------------------------------------------------------------
+
+    async def async_step_edit_medication_as_needed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 2b: edit as-needed dosing limits."""
+        coordinator = get_coordinator(self.hass, self._entry)
+        med = coordinator.get_medication(self._edit_id or "")
+
+        if med is None:
+            return await self.async_step_init()
+
+        if user_input is not None:
+            base = self._edit_med_base or {}
+            await coordinator.async_update_medication(
+                self._edit_id,  # type: ignore[arg-type]
+                {
+                    "name": base[CONF_MED_NAME],
+                    "dose": base.get(CONF_MED_DOSE, ""),
+                    "med_type": MED_TYPE_AS_NEEDED,
+                    "times": [],
+                    "days": [],
+                    "notes": base.get(CONF_MED_NOTES, ""),
+                    "as_needed_max_per_day": user_input.get(CONF_AS_NEEDED_MAX_PER_DAY, DEFAULT_AS_NEEDED_MAX_PER_DAY),
+                    "as_needed_max_per_24h": user_input.get(CONF_AS_NEEDED_MAX_PER_24H, DEFAULT_AS_NEEDED_MAX_PER_24H),
+                    "as_needed_min_hours": user_input.get(CONF_AS_NEEDED_MIN_HOURS, DEFAULT_AS_NEEDED_MIN_HOURS),
+                    **_stock_config_from_input(user_input, med),
+                },
+            )
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="edit_medication_as_needed",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_AS_NEEDED_MAX_PER_DAY, default=med.get("as_needed_max_per_day", DEFAULT_AS_NEEDED_MAX_PER_DAY)): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=24)
+                    ),
+                    vol.Optional(CONF_AS_NEEDED_MAX_PER_24H, default=med.get("as_needed_max_per_24h", DEFAULT_AS_NEEDED_MAX_PER_24H)): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=24)
+                    ),
+                    vol.Optional(CONF_AS_NEEDED_MIN_HOURS, default=med.get("as_needed_min_hours", DEFAULT_AS_NEEDED_MIN_HOURS)): vol.All(
+                        vol.Coerce(float), vol.Range(min=0.5, max=24)
+                    ),
+                    **_stock_schema_fields(med),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Medication: remove
+    # ------------------------------------------------------------------
+
+    async def async_step_remove_medication(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        meds = coordinator.medications
+
+        if not meds:
+            return await self.async_step_init()
+
+        if user_input is not None:
+            med_id = user_input.get("medication_id")
+            if med_id:
+                await coordinator.async_remove_medication(med_id)
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="remove_medication",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("medication_id"): vol.In(
+                        {m["id"]: m["name"] for m in meds}
+                    ),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Notifications: global settings
+    # ------------------------------------------------------------------
+
+    async def async_step_notifications(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        cfg = coordinator.notification_config
+        notify_services = _get_notify_services(self.hass)
+
+        if user_input is not None:
+            action = user_input.get("action", "save")
+
+            if action == "edit_due_message":
+                await coordinator.async_update_notification_config(
+                    _notification_config_from_input(user_input, cfg)
+                )
+                return await self.async_step_notification_due_message()
+
+            if action == "edit_overdue_message":
+                await coordinator.async_update_notification_config(
+                    _notification_config_from_input(user_input, cfg)
+                )
+                return await self.async_step_notification_overdue_message()
+
+            if action == "edit_due_soon_message":
+                await coordinator.async_update_notification_config(
+                    _notification_config_from_input(user_input, cfg)
+                )
+                return await self.async_step_notification_due_soon_message()
+
+            if action == "edit_taken_message":
+                await coordinator.async_update_notification_config(
+                    _notification_config_from_input(user_input, cfg)
+                )
+                return await self.async_step_notification_taken_message()
+
+            if action == "edit_low_stock_message":
+                await coordinator.async_update_notification_config(
+                    _notification_config_from_input(user_input, cfg)
+                )
+                return await self.async_step_notification_low_stock_message()
+
+            if action == "per_medication":
+                await coordinator.async_update_notification_config(
+                    _notification_config_from_input(user_input, cfg)
+                )
+                return await self.async_step_notification_per_medication()
+
+            await coordinator.async_update_notification_config(
+                _notification_config_from_input(user_input, cfg)
+            )
+            return await self.async_step_init()
+
+        current_target = cfg.get(CONF_NOTIF_TARGET, DEFAULT_NOTIFY_TARGET)
+        if current_target not in notify_services:
+            notify_services[current_target] = current_target
+
+        action_labels = {
+            "save": "Save and go back",
+            "edit_due_message": "Edit due now message template",
+            "edit_overdue_message": "Edit overdue message template",
+            "edit_due_soon_message": "Edit due soon message template",
+            "edit_taken_message": "Edit taken confirmation message",
+            "edit_low_stock_message": "Edit low stock message template",
+            "per_medication": "Per-medication overrides",
+        }
+
+        return self.async_show_form(
+            step_id="notifications",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_NOTIF_TARGET,
+                        default=current_target,
+                    ): vol.In(notify_services),
+                    vol.Optional(
+                        CONF_NOTIF_DUE_ENABLED,
+                        default=cfg.get(CONF_NOTIF_DUE_ENABLED, True),
+                    ): bool,
+                    vol.Optional(
+                        CONF_NOTIF_OVERDUE_ENABLED,
+                        default=cfg.get(CONF_NOTIF_OVERDUE_ENABLED, False),
+                    ): bool,
+                    vol.Optional(
+                        CONF_NOTIF_OVERDUE_REPEAT_MINUTES,
+                        default=cfg.get(
+                            CONF_NOTIF_OVERDUE_REPEAT_MINUTES, DEFAULT_OVERDUE_REPEAT_MINUTES
+                        ),
+                    ): vol.All(
+                        NumberSelector(
+                            {"min": 1, "max": 1440, "step": 1, "mode": "box"}
+                        ),
+                        vol.Coerce(int),
+                    ),
+                    vol.Optional(
+                        CONF_NOTIF_OVERDUE_MAX_REPEATS,
+                        default=cfg.get(
+                            CONF_NOTIF_OVERDUE_MAX_REPEATS, DEFAULT_OVERDUE_MAX_REPEATS
+                        ),
+                    ): vol.All(
+                        NumberSelector(
+                            {"min": 1, "max": 100, "step": 1, "mode": "box"}
+                        ),
+                        vol.Coerce(int),
+                    ),
+                    vol.Optional(
+                        CONF_NOTIF_DUE_SOON_ENABLED,
+                        default=cfg.get(CONF_NOTIF_DUE_SOON_ENABLED, False),
+                    ): bool,
+                    vol.Optional(
+                        CONF_NOTIF_TAKEN_ENABLED,
+                        default=cfg.get(CONF_NOTIF_TAKEN_ENABLED, False),
+                    ): bool,
+                    vol.Optional(
+                        CONF_NOTIF_LOW_STOCK_ENABLED,
+                        default=cfg.get(CONF_NOTIF_LOW_STOCK_ENABLED, False),
+                    ): bool,
+                    vol.Required("action", default="save"): vol.In(action_labels),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Notifications: due now message template
+    # ------------------------------------------------------------------
+
+    async def async_step_notification_due_message(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        cfg = coordinator.notification_config
+
+        if user_input is not None:
+            updated = {
+                **cfg,
+                CONF_NOTIF_DUE_TITLE: user_input.get(
+                    CONF_NOTIF_DUE_TITLE,
+                    notification_template(cfg, CONF_NOTIF_DUE_TITLE, self.hass.config.language),
+                ),
+                CONF_NOTIF_DUE_MESSAGE: user_input.get(
+                    CONF_NOTIF_DUE_MESSAGE,
+                    notification_template(cfg, CONF_NOTIF_DUE_MESSAGE, self.hass.config.language),
+                ),
+                **_sound_config_from_input("due", user_input),
+            }
+            await coordinator.async_update_notification_config(updated)
+            return await self.async_step_notifications()
+
+        return self.async_show_form(
+            step_id="notification_due_message",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_NOTIF_DUE_TITLE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_DUE_TITLE, self.hass.config.language
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_NOTIF_DUE_MESSAGE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_DUE_MESSAGE, self.hass.config.language
+                        ),
+                    ): str,
+                    **_sound_schema_fields("due", cfg),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Notifications: overdue message template
+    # ------------------------------------------------------------------
+
+    async def async_step_notification_overdue_message(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        cfg = coordinator.notification_config
+
+        if user_input is not None:
+            updated = {
+                **cfg,
+                CONF_NOTIF_OVERDUE_TITLE: user_input.get(
+                    CONF_NOTIF_OVERDUE_TITLE,
+                    notification_template(
+                        cfg, CONF_NOTIF_OVERDUE_TITLE, self.hass.config.language
+                    ),
+                ),
+                CONF_NOTIF_OVERDUE_MESSAGE: user_input.get(
+                    CONF_NOTIF_OVERDUE_MESSAGE,
+                    notification_template(
+                        cfg, CONF_NOTIF_OVERDUE_MESSAGE, self.hass.config.language
+                    ),
+                ),
+                **_sound_config_from_input("overdue", user_input),
+            }
+            await coordinator.async_update_notification_config(updated)
+            return await self.async_step_notifications()
+
+        return self.async_show_form(
+            step_id="notification_overdue_message",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_NOTIF_OVERDUE_TITLE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_OVERDUE_TITLE, self.hass.config.language
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_NOTIF_OVERDUE_MESSAGE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_OVERDUE_MESSAGE, self.hass.config.language
+                        ),
+                    ): str,
+                    **_sound_schema_fields("overdue", cfg),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Notifications: due soon message template
+    # ------------------------------------------------------------------
+
+    async def async_step_notification_due_soon_message(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        cfg = coordinator.notification_config
+
+        if user_input is not None:
+            updated = {
+                **cfg,
+                CONF_NOTIF_DUE_SOON_TITLE: user_input.get(
+                    CONF_NOTIF_DUE_SOON_TITLE,
+                    notification_template(
+                        cfg, CONF_NOTIF_DUE_SOON_TITLE, self.hass.config.language
+                    ),
+                ),
+                CONF_NOTIF_DUE_SOON_MESSAGE: user_input.get(
+                    CONF_NOTIF_DUE_SOON_MESSAGE,
+                    notification_template(
+                        cfg, CONF_NOTIF_DUE_SOON_MESSAGE, self.hass.config.language
+                    ),
+                ),
+                **_sound_config_from_input("due_soon", user_input),
+            }
+            await coordinator.async_update_notification_config(updated)
+            return await self.async_step_notifications()
+
+        return self.async_show_form(
+            step_id="notification_due_soon_message",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_NOTIF_DUE_SOON_TITLE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_DUE_SOON_TITLE, self.hass.config.language
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_NOTIF_DUE_SOON_MESSAGE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_DUE_SOON_MESSAGE, self.hass.config.language
+                        ),
+                    ): str,
+                    **_sound_schema_fields("due_soon", cfg),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Notifications: taken confirmation message template
+    # ------------------------------------------------------------------
+
+    async def async_step_notification_taken_message(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        cfg = coordinator.notification_config
+
+        if user_input is not None:
+            updated = {
+                **cfg,
+                CONF_NOTIF_TAKEN_TITLE: user_input.get(
+                    CONF_NOTIF_TAKEN_TITLE,
+                    notification_template(cfg, CONF_NOTIF_TAKEN_TITLE, self.hass.config.language),
+                ),
+                CONF_NOTIF_TAKEN_MESSAGE: user_input.get(
+                    CONF_NOTIF_TAKEN_MESSAGE,
+                    notification_template(
+                        cfg, CONF_NOTIF_TAKEN_MESSAGE, self.hass.config.language
+                    ),
+                ),
+                **_sound_config_from_input("taken", user_input),
+            }
+            await coordinator.async_update_notification_config(updated)
+            return await self.async_step_notifications()
+
+        return self.async_show_form(
+            step_id="notification_taken_message",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_NOTIF_TAKEN_TITLE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_TAKEN_TITLE, self.hass.config.language
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_NOTIF_TAKEN_MESSAGE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_TAKEN_MESSAGE, self.hass.config.language
+                        ),
+                    ): str,
+                    **_sound_schema_fields("taken", cfg),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Notifications: low stock message template
+    # ------------------------------------------------------------------
+
+    async def async_step_notification_low_stock_message(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        cfg = coordinator.notification_config
+
+        if user_input is not None:
+            updated = {
+                **cfg,
+                CONF_NOTIF_LOW_STOCK_TITLE: user_input.get(
+                    CONF_NOTIF_LOW_STOCK_TITLE,
+                    notification_template(
+                        cfg, CONF_NOTIF_LOW_STOCK_TITLE, self.hass.config.language
+                    ),
+                ),
+                CONF_NOTIF_LOW_STOCK_MESSAGE: user_input.get(
+                    CONF_NOTIF_LOW_STOCK_MESSAGE,
+                    notification_template(
+                        cfg, CONF_NOTIF_LOW_STOCK_MESSAGE, self.hass.config.language
+                    ),
+                ),
+                **_sound_config_from_input("low_stock", user_input),
+            }
+            await coordinator.async_update_notification_config(updated)
+            return await self.async_step_notifications()
+
+        return self.async_show_form(
+            step_id="notification_low_stock_message",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_NOTIF_LOW_STOCK_TITLE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_LOW_STOCK_TITLE, self.hass.config.language
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_NOTIF_LOW_STOCK_MESSAGE,
+                        default=notification_template(
+                            cfg, CONF_NOTIF_LOW_STOCK_MESSAGE, self.hass.config.language
+                        ),
+                    ): str,
+                    **_sound_schema_fields("low_stock", cfg),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Notifications: pick medication for per-medication overrides
+    # ------------------------------------------------------------------
+
+    async def async_step_notification_per_medication(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        meds = coordinator.medications
+
+        if not meds:
+            return await self.async_step_notifications()
+
+        if user_input is not None:
+            self._override_med_id = user_input.get("medication_id")
+            return await self.async_step_notification_med_overrides()
+
+        return self.async_show_form(
+            step_id="notification_per_medication",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("medication_id"): vol.In(
+                        {m["id"]: m["name"] for m in meds}
+                    ),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Notifications: per-medication override toggles
+    # ------------------------------------------------------------------
+
+    async def async_step_notification_med_overrides(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        coordinator = get_coordinator(self.hass, self._entry)
+        med = coordinator.get_medication(self._override_med_id or "")
+
+        if med is None:
+            return await self.async_step_notifications()
+
+        existing = med.get(CONF_NOTIF_OVERRIDES, {})
+        cfg = coordinator.notification_config
+
+        if user_input is not None:
+            overrides: dict[str, Any] = {}
+            global_due = cfg.get(CONF_NOTIF_DUE_ENABLED, True)
+            global_overdue = cfg.get(CONF_NOTIF_OVERDUE_ENABLED, False)
+            global_due_soon = cfg.get(CONF_NOTIF_DUE_SOON_ENABLED, False)
+            global_taken = cfg.get(CONF_NOTIF_TAKEN_ENABLED, False)
+            global_low_stock = cfg.get(CONF_NOTIF_LOW_STOCK_ENABLED, False)
+
+            val_due = user_input.get(CONF_NOTIF_OVERRIDE_DUE)
+            val_overdue = user_input.get(CONF_NOTIF_OVERRIDE_OVERDUE)
+            val_due_soon = user_input.get(CONF_NOTIF_OVERRIDE_DUE_SOON)
+            val_taken = user_input.get(CONF_NOTIF_OVERRIDE_TAKEN)
+            val_low_stock = user_input.get(CONF_NOTIF_OVERRIDE_LOW_STOCK)
+
+            if val_due is not None and val_due != global_due:
+                overrides[CONF_NOTIF_OVERRIDE_DUE] = val_due
+            if val_overdue is not None and val_overdue != global_overdue:
+                overrides[CONF_NOTIF_OVERRIDE_OVERDUE] = val_overdue
+            if val_due_soon is not None and val_due_soon != global_due_soon:
+                overrides[CONF_NOTIF_OVERRIDE_DUE_SOON] = val_due_soon
+            if val_taken is not None and val_taken != global_taken:
+                overrides[CONF_NOTIF_OVERRIDE_TAKEN] = val_taken
+            if val_low_stock is not None and val_low_stock != global_low_stock:
+                overrides[CONF_NOTIF_OVERRIDE_LOW_STOCK] = val_low_stock
+
+            await coordinator.async_update_med_notification_overrides(
+                self._override_med_id,  # type: ignore[arg-type]
+                overrides,
+            )
+            return await self.async_step_notifications()
+
+        global_due = cfg.get(CONF_NOTIF_DUE_ENABLED, True)
+        global_overdue = cfg.get(CONF_NOTIF_OVERDUE_ENABLED, False)
+        global_due_soon = cfg.get(CONF_NOTIF_DUE_SOON_ENABLED, False)
+        global_taken = cfg.get(CONF_NOTIF_TAKEN_ENABLED, False)
+        global_low_stock = cfg.get(CONF_NOTIF_LOW_STOCK_ENABLED, False)
+
+        return self.async_show_form(
+            step_id="notification_med_overrides",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_NOTIF_OVERRIDE_DUE,
+                        default=existing.get(CONF_NOTIF_OVERRIDE_DUE, global_due),
+                    ): bool,
+                    vol.Optional(
+                        CONF_NOTIF_OVERRIDE_OVERDUE,
+                        default=existing.get(CONF_NOTIF_OVERRIDE_OVERDUE, global_overdue),
+                    ): bool,
+                    vol.Optional(
+                        CONF_NOTIF_OVERRIDE_DUE_SOON,
+                        default=existing.get(CONF_NOTIF_OVERRIDE_DUE_SOON, global_due_soon),
+                    ): bool,
+                    vol.Optional(
+                        CONF_NOTIF_OVERRIDE_TAKEN,
+                        default=existing.get(CONF_NOTIF_OVERRIDE_TAKEN, global_taken),
+                    ): bool,
+                    vol.Optional(
+                        CONF_NOTIF_OVERRIDE_LOW_STOCK,
+                        default=existing.get(CONF_NOTIF_OVERRIDE_LOW_STOCK, global_low_stock),
+                    ): bool,
+                }
+            ),
+            description_placeholders={"medication": med["name"]},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _notification_config_from_input(
+    user_input: dict[str, Any], existing: dict[str, Any]
+) -> dict[str, Any]:
+    """Build a notification config dict from options flow form input."""
+    return {
+        **existing,
+        CONF_NOTIF_TARGET: user_input.get(
+            CONF_NOTIF_TARGET, existing.get(CONF_NOTIF_TARGET, DEFAULT_NOTIFY_TARGET)
+        ),
+        CONF_NOTIF_DUE_ENABLED: user_input.get(
+            CONF_NOTIF_DUE_ENABLED, existing.get(CONF_NOTIF_DUE_ENABLED, True)
+        ),
+        CONF_NOTIF_OVERDUE_ENABLED: user_input.get(
+            CONF_NOTIF_OVERDUE_ENABLED, existing.get(CONF_NOTIF_OVERDUE_ENABLED, False)
+        ),
+        CONF_NOTIF_OVERDUE_REPEAT_MINUTES: user_input.get(
+            CONF_NOTIF_OVERDUE_REPEAT_MINUTES,
+            existing.get(CONF_NOTIF_OVERDUE_REPEAT_MINUTES, DEFAULT_OVERDUE_REPEAT_MINUTES),
+        ),
+        CONF_NOTIF_OVERDUE_MAX_REPEATS: user_input.get(
+            CONF_NOTIF_OVERDUE_MAX_REPEATS,
+            existing.get(CONF_NOTIF_OVERDUE_MAX_REPEATS, DEFAULT_OVERDUE_MAX_REPEATS),
+        ),
+        CONF_NOTIF_DUE_SOON_ENABLED: user_input.get(
+            CONF_NOTIF_DUE_SOON_ENABLED, existing.get(CONF_NOTIF_DUE_SOON_ENABLED, False)
+        ),
+        CONF_NOTIF_TAKEN_ENABLED: user_input.get(
+            CONF_NOTIF_TAKEN_ENABLED, existing.get(CONF_NOTIF_TAKEN_ENABLED, False)
+        ),
+        CONF_NOTIF_LOW_STOCK_ENABLED: user_input.get(
+            CONF_NOTIF_LOW_STOCK_ENABLED, existing.get(CONF_NOTIF_LOW_STOCK_ENABLED, False)
+        ),
+    }
