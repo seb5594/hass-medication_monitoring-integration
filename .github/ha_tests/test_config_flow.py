@@ -56,7 +56,7 @@ async def test_import_disabled_tracker_once(hass, monkeypatch):
         domain, context={"source": config_entries.SOURCE_USER}
     )
     source_field = result["data_schema"].schema["legacy_entry_id"]
-    assert source_field.container == {legacy.entry_id: f"{legacy.title} ({legacy.entry_id})"}
+    assert source_field.container == {legacy.entry_id: legacy.title}
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"legacy_entry_id": legacy.entry_id}
     )

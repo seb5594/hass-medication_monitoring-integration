@@ -109,6 +109,5 @@ async def async_find_legacy_sources(hass: HomeAssistant) -> dict[str, LegacySour
         names = [med["name"] for med in data["medications"]]
         entry = entries.get(entry_id)
         title = entry.title if entry else ", ".join(names[:3]) or "Medication Tracker"
-        # Include the id to disambiguate profiles with the same display name.
         sources[entry_id] = LegacySource(entry_id, title, names)
     return sources

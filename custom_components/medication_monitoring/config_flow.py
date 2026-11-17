@@ -250,8 +250,8 @@ class MedicationTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         if sources:
             default = next(iter(sources)) if len(sources) == 1 else vol.UNDEFINED
             fields[vol.Optional(CONF_LEGACY_ENTRY_ID, default=default)] = vol.In({
-                source_id: f"{source.title} ({source_id})"
-                for source_id, source in sources.items()
+                source_id: source.title if len(sources) == 1 else f"{index}. {source.title}"
+                for index, (source_id, source) in enumerate(sources.items(), 1)
             })
         return self.async_show_form(
             step_id="user",
