@@ -48,12 +48,13 @@ Use the manual installation below on Core versions older than 2024.4.1. The curr
 [HACS installation requirements](https://www.hacs.xyz/docs/use/download/prerequisites/)
 start at Core 2024.4.1.
 
-### Via HACS as a custom repository
+### Via HACS or Marketplace
 
-1. Use the *HACS · Marketplace* badge above, or open **HACS → ⋮ → Custom repositories** and add
-   `https://github.com/seb5594/hass-medication_monitoring-integration` as an **Integration**.
-2. Open the entry from `seb5594/hass-medication_monitoring-integration` and download it.
-3. Restart Home Assistant.
+1. Search for **Medication Monitoring** in HACS (Home Assistant 2026.10 and older) or in
+   **Settings → Marketplace** (2026.11 and newer), or use the *HACS · Marketplace* badge above.
+   If the search does not find it, add `https://github.com/seb5594/hass-medication_monitoring-integration`
+   as a custom repository (category **Integration**) in the same place first.
+2. Download **Medication Monitoring** and restart Home Assistant.
 
 The Community edition uses the Home Assistant domain `medication_monitoring`. The
 [upstream project](https://github.com/calebgab/medication_tracker) and releases through
