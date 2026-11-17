@@ -1,4 +1,4 @@
-"""Config flow for Medication Tracker."""
+"""Config flow for Medication Monitoring."""
 
 from __future__ import annotations
 
@@ -236,10 +236,13 @@ class MedicationTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                     data[CONF_LEGACY_ENTRY_ID] = source_id
                     await self.async_set_unique_id(f"legacy:{source_id}")
                     self._abort_if_unique_id_configured()
-                    return self.async_create_entry(title=title or sources[source_id], data=data)
+                    source_title = sources[source_id]
+                    if source_title == "Medication Tracker":
+                        source_title = "Medication Monitoring"
+                    return self.async_create_entry(title=title or source_title, data=data)
                 errors[CONF_LEGACY_ENTRY_ID] = "legacy_entry_unavailable"
             else:
-                title = title or "Medication Tracker (Community)"
+                title = title or "Medication Monitoring"
                 await self.async_set_unique_id(title.lower().replace(" ", "_"))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=title, data=data)

@@ -1,6 +1,6 @@
 {
   "domain": "medication_monitoring",
-  "name": "Medication Tracker (Community)",
+  "name": "Medication Monitoring",
   "after_dependencies": [],
   "categories": [
     "health_wellbeing"

@@ -1,9 +1,9 @@
 {
-  "title": "Medikamentenübersicht (Community)",
+  "title": "Medication Monitoring",
   "config": {
     "step": {
       "user": {
-        "title": "Medikamentenübersicht einrichten",
+        "title": "Medication Monitoring einrichten",
         "description": "Erstelle eine neue Medikamentenübersicht. Medikamente kannst du nach der Einrichtung über die Schaltfläche „Konfigurieren“ hinzufügen.",
         "data": {
           "title": "Name des Trackers",

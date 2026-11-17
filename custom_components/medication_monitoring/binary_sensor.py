@@ -1,4 +1,4 @@
-"""Binary sensor platform for Medication Tracker."""
+"""Binary sensor platform for Medication Monitoring."""
 
 from __future__ import annotations
 
@@ -109,7 +109,7 @@ class MedicationBaseBinarySensor(CoordinatorEntity[MedicationCoordinator], Binar
             entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, f"{entry_id}_{med_id}")},
             name=self._med_name,
-            manufacturer="Medication Tracker",
+            manufacturer="Medication Monitoring",
         )
 
     @property

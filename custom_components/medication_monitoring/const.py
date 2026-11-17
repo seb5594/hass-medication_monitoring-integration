@@ -1,4 +1,4 @@
-"""Constants for the Medication Tracker integration."""
+"""Constants for the Medication Monitoring integration."""
 
 DOMAIN = "medication_monitoring"
 LEGACY_DOMAIN = "medication_tracker"
@@ -171,7 +171,7 @@ IOS_CRITICAL_SOUND = {"name": "default", "critical": 1, "volume": 1.0}
 # later importance/sound changes via the payload are ignored, only lowering
 # takes effect. Users adjust sound per-channel in their device's own settings.
 ANDROID_CRITICAL_CHANNEL = "Critical Medication"
-ANDROID_SILENT_CHANNEL = "Medication Tracker (Silent)"
+ANDROID_SILENT_CHANNEL = "Medication Monitoring (Silent)"
 ANDROID_SILENT_IMPORTANCE = "low"
 
 # Per-alert-type sound config keys

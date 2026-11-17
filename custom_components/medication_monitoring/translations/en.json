@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up Medication Tracker",
+        "title": "Set up Medication Monitoring",
         "description": "Create a medication tracker instance. You can add medications after setup via the Configure button.",
         "data": {
           "title": "Tracker name",
@@ -202,5 +202,5 @@
       "invalid_day_format": "Invalid day format. Use mon/tue/wed/thu/fri/sat/sun, comma-separated."
     }
   },
-  "title": "Medication Tracker (Community)"
+  "title": "Medication Monitoring"
 }

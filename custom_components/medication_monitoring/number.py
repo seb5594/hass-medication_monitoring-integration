@@ -1,4 +1,4 @@
-"""Number platform for Medication Tracker."""
+"""Number platform for Medication Monitoring."""
 
 from __future__ import annotations
 
@@ -93,7 +93,7 @@ class MedicationStockNumber(CoordinatorEntity[MedicationCoordinator], NumberEnti
             entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, f"{entry_id}_{med_id}")},
             name=self._med_name,
-            manufacturer="Medication Tracker",
+            manufacturer="Medication Monitoring",
         )
 
     @property

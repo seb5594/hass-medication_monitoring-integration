@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for Medication Tracker."""
+"""DataUpdateCoordinator for Medication Monitoring."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 {
-  "name": "Medication Tracker (Community)",
+  "name": "Medication Monitoring",
   "render_readme": true,
   "homeassistant": "2024.7.0",
   "zip_release": true,

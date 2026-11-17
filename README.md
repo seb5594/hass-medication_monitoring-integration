@@ -1,8 +1,8 @@
 <!-- header:begin (generated from project metadata) -->
-<h1 align="center">Medication Tracker (Community)</h1>
+<h1 align="center">Medication Monitoring</h1>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/seb5594/hass-medication_tracker-integration/main/custom_components/medication_monitoring/brand/icon@2x.png" alt="Medication Tracker" width="160" height="160">
+  <img src="https://raw.githubusercontent.com/seb5594/hass-medication_tracker-integration/main/custom_components/medication_monitoring/brand/icon@2x.png" alt="Medication Monitoring" width="160" height="160">
 </p>
 
 ---
@@ -58,15 +58,15 @@ The Community edition uses the Home Assistant domain `medication_monitoring`. Th
 
 1. Back up Home Assistant and **disable** your source tracker in **Settings → Devices & Services**.
    Keep its configuration entry until you have verified the import.
-2. Install or update **Medication Tracker (Community)**, then restart Home Assistant.
-3. Add **Medication Tracker (Community)** in **Settings → Devices & Services → Add Integration**.
+2. Install or update **Medication Monitoring**, then restart Home Assistant.
+3. Add **Medication Monitoring** in **Settings → Devices & Services → Add Integration**.
    Select the disabled tracker under **Copy from a disabled legacy tracker**. Repeat for each tracker
    you want to move.
 4. Verify your medications, stock, recent dose history, and notification settings. The import
    copies the local data into a new tracker. The previous tracker and its saved data stay in place.
 5. Update automations to use the new entities and `medication_monitoring.*` actions.
    Replace `custom:medication-tracker-card` with `custom:medication-monitoring-card` in
-   dashboard YAML, or select **Medication Tracker (Community)** in the card picker.
+   dashboard YAML, or select **Medication Monitoring** in the card picker.
 
 Home Assistant creates new devices and entities for the imported tracker. Old mobile notification
 buttons are tied to the old tracker. Keep it disabled for the imported profiles to avoid duplicate
@@ -82,7 +82,7 @@ reminders. To roll back, disable the Community tracker before re-enabling the or
 ## Setup
 
 1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **Medication Tracker (Community)**
+2. Search for **Medication Monitoring**
 3. Give it a name (useful if you want multiple trackers, e.g. one per person)
 4. Click **Configure** to add your first medication
 
@@ -139,7 +139,7 @@ Once enabled, stock decrements automatically every time a dose is marked taken, 
 
 **Restocking:** once tracking is on, don't re-edit the medication to change the stock count — the edit form ignores the Current stock field after the first time (to avoid a stale form value silently overwriting stock that changed while the form was open). Instead, top up stock one of these ways:
 
-- **Device page** — open the medication's device (Settings → Devices & Services → Medication Tracker → the medication), and set the **Stock** control under Controls directly to a new value
+- **Device page** — open the medication's device (Settings → Devices & Services → Medication Monitoring → the medication), and set the **Stock** control under Controls directly to a new value
 - **Lovelace card** — click **Top up stock** on the medication's card, which opens the same Stock control
 - **Service** — call `medication_monitoring.adjust_stock` (see [Services](#services)) to add or subtract an amount, handy for automations (e.g. after scanning a barcode)
 
@@ -314,7 +314,7 @@ Add to or subtract from a medication's current stock level — handy for automat
 
 A custom card is included that shows all your medications in one place, including status, next dose time, last taken, streak, doses taken today, and Mark taken / Skip dose buttons. Medications with stock tracking enabled also show the current stock level and a **Top up stock** button.
 
-![Medication Tracker Lovelace Card](docs/lovelace-card.png)
+![Medication Monitoring Lovelace Card](docs/lovelace-card.png)
 
 The card is registered automatically when Home Assistant starts with the integration installed — there is nothing to copy and no dashboard resource to add. It is served from the integration itself, so it is updated together with the integration through HACS.
 
@@ -328,7 +328,7 @@ Earlier versions required copying `medication-tracker-card.js` to `config/www` a
 
 1. Edit any dashboard
 2. Click **Add card**
-3. Scroll to the bottom and select **Custom: Medication Tracker (Community)**
+3. Scroll to the bottom and select **Custom: Medication Monitoring**
 4. The card automatically discovers all your medications — no configuration needed
 
 ---

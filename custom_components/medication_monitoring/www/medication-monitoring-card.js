@@ -430,7 +430,7 @@ if (!customElements.get("medication-monitoring-card")) {
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: "medication-monitoring-card",
-    name: "Medication Tracker (Community)",
+    name: "Medication Monitoring",
     description: "Shows all medications with status and mark taken / skip buttons.",
     preview: false,
   });

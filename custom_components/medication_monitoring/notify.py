@@ -1,4 +1,4 @@
-"""Notification engine for Medication Tracker."""
+"""Notification engine for Medication Monitoring."""
 
 from __future__ import annotations
 

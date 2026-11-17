@@ -1,4 +1,4 @@
-"""Medication Tracker integration for Home Assistant."""
+"""Medication Monitoring integration for Home Assistant."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MedicationTrackerConfigEntry) -> bool:
-    """Set up Medication Tracker from a config entry."""
+    """Set up Medication Monitoring from a config entry."""
     coordinator = MedicationCoordinator(hass, entry.entry_id)
     await coordinator.async_load(entry.data.get(CONF_LEGACY_ENTRY_ID))
 
@@ -130,7 +130,7 @@ def _get_coordinator(hass: HomeAssistant, med_id: str) -> MedicationCoordinator:
         if coordinator.get_medication(med_id):
             return coordinator
     raise ServiceValidationError(
-        f"Medication with id '{med_id}' not found in any Medication Tracker entry."
+        f"Medication with id '{med_id}' not found in any Medication Monitoring entry."
     )
 
 

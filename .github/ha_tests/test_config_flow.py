@@ -53,6 +53,7 @@ async def test_import_disabled_tracker_once(hass, monkeypatch):
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     entry = result["result"]
+    assert entry.title == legacy.title
     await hass.async_block_till_done()
     assert entry.state is config_entries.ConfigEntryState.LOADED
 
