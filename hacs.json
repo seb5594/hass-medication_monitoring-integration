@@ -1,7 +1,7 @@
 {
   "name": "Medication Monitoring",
   "render_readme": true,
-  "homeassistant": "2021.12.10",
+  "homeassistant": "2022.8.0",
   "zip_release": true,
   "filename": "medication_monitoring.zip"
 }
