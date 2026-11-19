@@ -11,12 +11,12 @@ validate_version = runpy.run_path(
 
 class VersionSchemeTests(unittest.TestCase):
     def test_padded_dates_and_builds(self):
-        for version in ("2026.02.03.0", "2026.11.19.12", "2024.02.29.1"):
+        for version in ("2026.02.03", "2026.02.03.1", "2026.11.19.12", "2024.02.29", "2026.11.19.0"):
             with self.subTest(version=version):
                 validate_version(version)
 
     def test_invalid_padding_and_builds(self):
-        for version in ("2026.2.03.0", "2026.02.3.0", "2026.02.03", "2026.02.03.-1",
+        for version in ("2026.2.03.0", "2026.02.3.0", "2026.02.3", "2026.02.03.-1",
                         "2026.02.03.01", "2026.02.03.0b1", "v2026.02.03.0"):
             with self.subTest(version=version), self.assertRaises(ValueError):
                 validate_version(version)
