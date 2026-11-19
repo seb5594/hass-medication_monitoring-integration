@@ -206,5 +206,6 @@
       "invalid_time_format": "Invalid time format. Use HH:MM, comma-separated (e.g. 08:00, 20:00).",
       "invalid_day_format": "Invalid day format. Use mon/tue/wed/thu/fri/sat/sun, comma-separated."
     }
-  }
+  },
+  "title": "Medication Monitoring"
 }
