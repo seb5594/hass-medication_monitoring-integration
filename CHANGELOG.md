@@ -1,9 +1,12 @@
 # Changelog
 
-Versions follow the scheme of the original project: `YYYY.M.D.B`, the release date plus a build
-number for the day.
+New versions use `YYYY.MM.DD.BUILD`: four-digit year, two-digit month and day, followed by
+a non-negative build number starting at `0` for each day (for example, `2026.02.03.0`).
+Existing releases retain their original version numbers.
 
-## Unreleased
+## 2026.11.19.0
+
+- Enforce the `YYYY.MM.DD.BUILD` release format, including zero-padded months and days.
 
 - Correct translated management, medication-type, and notification-sound selections in the options
   flow; use native selector translations and retain a fallback for older Home Assistant releases.
