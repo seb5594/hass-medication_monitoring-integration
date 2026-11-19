@@ -36,10 +36,9 @@ try:
 except ImportError:
     from homeassistant.exceptions import HomeAssistantError as ServiceValidationError
 
+CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): vol.Schema({})}, extra=vol.ALLOW_EXTRA)
 if hasattr(cv, "config_entry_only_config_schema"):
     CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-else:
-    CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): vol.Schema({})}, extra=vol.ALLOW_EXTRA)
 
 # ---------------------------------------------------------------------------
 # Service schemas
