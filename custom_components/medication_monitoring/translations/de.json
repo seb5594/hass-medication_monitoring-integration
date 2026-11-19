@@ -201,11 +201,118 @@
           "stock_per_dose": "Verbrauch pro Einnahme (Einheiten)",
           "stock_low_threshold": "Benachrichtigen, wenn der Vorrat diesen Wert erreicht oder unterschreitet"
         }
+      },
+      "select_medication": {
+        "title": "Medikament bearbeiten",
+        "data": {
+          "medication_id": "Medikament"
+        }
       }
     },
     "error": {
       "invalid_time_format": "Ungültiges Zeitformat. Verwende HH:MM, durch Komma getrennt (z. B. 08:00, 20:00).",
       "invalid_day_format": "Ungültiges Tagesformat. Verwende mon/tue/wed/thu/fri/sat/sun, durch Komma getrennt."
+    }
+  },
+  "selector": {
+    "manage_action": {
+      "options": {
+        "add": "Medikament hinzufügen",
+        "edit": "Medikament bearbeiten",
+        "remove": "Medikament entfernen",
+        "notifications": "Benachrichtigungen",
+        "done": "Speichern und beenden"
+      }
+    },
+    "notification_action": {
+      "options": {
+        "save": "Speichern und zurück",
+        "edit_due_message": "Nachricht „Jetzt fällig“ bearbeiten",
+        "edit_overdue_message": "Nachricht „Überfällig“ bearbeiten",
+        "edit_due_soon_message": "Nachricht „Bald fällig“ bearbeiten",
+        "edit_taken_message": "Einnahmebestätigung bearbeiten",
+        "edit_low_stock_message": "Nachricht „Vorrat niedrig“ bearbeiten",
+        "per_medication": "Einstellungen pro Medikament"
+      }
+    },
+    "med_type": {
+      "options": {
+        "scheduled": "Nach Zeitplan (feste Einnahmezeiten)",
+        "as_needed": "Bei Bedarf"
+      }
+    },
+    "ios_sound_mode": {
+      "options": {
+        "default": "Standard (Benachrichtigungston des Geräts)",
+        "critical": "Kritisch — umgeht Stummschaltung und „Nicht stören“",
+        "time_sensitive": "Zeitkritisch — mit Ton",
+        "none": "Kein Ton"
+      }
+    },
+    "android_sound_mode": {
+      "options": {
+        "default": "Standard (Benachrichtigungston des Geräts)",
+        "critical": "Kritisch — eigener Kanal mit hoher Priorität",
+        "none": "Kein Ton"
+      }
+    },
+    "android_importance": {
+      "options": {
+        "min": "Minimal",
+        "low": "Niedrig",
+        "default": "Standard",
+        "high": "Hoch",
+        "max": "Maximal"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_dose": {
+        "name": "Nächste Einnahme"
+      },
+      "last_taken": {
+        "name": "Zuletzt eingenommen"
+      },
+      "streak": {
+        "name": "Einnahmeserie"
+      },
+      "taken_today": {
+        "name": "Heute eingenommen"
+      },
+      "next_available": {
+        "name": "Nächste mögliche Einnahme"
+      },
+      "stock": {
+        "name": "Vorrat"
+      }
+    },
+    "binary_sensor": {
+      "overdue": {
+        "name": "Überfällig"
+      },
+      "due_soon": {
+        "name": "Bald fällig"
+      },
+      "available": {
+        "name": "Verfügbar"
+      },
+      "low_stock": {
+        "name": "Vorrat niedrig"
+      }
+    },
+    "button": {
+      "mark_taken": {
+        "name": "Als eingenommen markieren"
+      },
+      "mark_skipped": {
+        "name": "Einnahme überspringen"
+      }
+    },
+    "number": {
+      "stock_number": {
+        "name": "Vorrat"
+      }
     }
   }
 }

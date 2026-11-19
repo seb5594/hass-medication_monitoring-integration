@@ -77,6 +77,7 @@ from .const import (
 
 from .legacy import async_find_legacy_sources, async_load_legacy_data
 from .notification_text import notification_template
+from .ui_translation import async_select
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigFlowResult
@@ -166,7 +167,7 @@ def _stock_config_from_input(
     }
 
 
-def _sound_schema_fields(type_key: str, cfg: dict[str, Any]) -> dict[Any, Any]:
+async def _sound_schema_fields(type_key: str, cfg: dict[str, Any], hass: Any, context: dict) -> dict[Any, Any]:
     """Return the iOS/Android notification sound schema fields for one alert type."""
     ios_mode_key, ios_name_key, android_mode_key, android_importance_key = (
         NOTIF_SOUND_KEYS_BY_TYPE[type_key]
@@ -174,17 +175,17 @@ def _sound_schema_fields(type_key: str, cfg: dict[str, Any]) -> dict[Any, Any]:
     return {
         vol.Optional(
             ios_mode_key, default=cfg.get(ios_mode_key, DEFAULT_IOS_SOUND_MODE)
-        ): vol.In(IOS_SOUND_MODE_OPTIONS),
+        ): await async_select(hass, context, "ios_sound_mode", IOS_SOUND_MODE_OPTIONS),
         vol.Optional(
             ios_name_key, default=cfg.get(ios_name_key, DEFAULT_IOS_SOUND_NAME)
         ): str,
         vol.Optional(
             android_mode_key, default=cfg.get(android_mode_key, DEFAULT_ANDROID_SOUND_MODE)
-        ): vol.In(ANDROID_SOUND_MODE_OPTIONS),
+        ): await async_select(hass, context, "android_sound_mode", ANDROID_SOUND_MODE_OPTIONS),
         vol.Optional(
             android_importance_key,
             default=cfg.get(android_importance_key, DEFAULT_ANDROID_IMPORTANCE),
-        ): vol.In(ANDROID_IMPORTANCE_OPTIONS),
+        ): await async_select(hass, context, "android_importance", ANDROID_IMPORTANCE_OPTIONS),
     }
 
 
@@ -342,33 +343,44 @@ class MedicationOptionsFlow(OptionsFlow):
                 return await self.async_step_remove_medication()
             if action == "notifications":
                 return await self.async_step_notifications()
+            if action == "edit":
+                return await self.async_step_select_medication()
             if action.startswith("edit:"):
                 self._edit_id = action.split(":", 1)[1]
                 return await self.async_step_edit_medication()
             return self.async_create_entry(title="", data={})
 
-        action_options: list[str] = ["add"]
-        for med in meds:
-            action_options.append(f"edit:{med['id']}")
-        action_options += ["remove", "notifications", "done"]
-
-        action_labels: dict[str, str] = {
+        action_labels = {
             "add": "Add new medication",
+            **({"edit": "Edit a medication"} if meds else {}),
+            "remove": "Remove a medication",
             "notifications": "Notifications",
             "done": "Save and Finish",
         }
-        for med in meds:
-            action_labels[f"edit:{med['id']}"] = f"Edit: {med['name']}"
-        action_labels["remove"] = "Remove a medication"
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required("action", default="done"): vol.In(action_labels),
+                    vol.Required("action", default="done"): await async_select(self.hass, self.context, "manage_action", action_labels),
                 }
             ),
             description_placeholders={"count": str(len(meds))},
+        )
+
+    async def async_step_select_medication(self, user_input=None):
+        """Choose a medication without embedding untranslated verbs in its label."""
+        meds = get_coordinator(self.hass, self._entry).medications
+        if user_input is not None:
+            if any(med["id"] == user_input["medication_id"] for med in meds):
+                self._edit_id = user_input["medication_id"]
+                return await self.async_step_edit_medication()
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="select_medication",
+            data_schema=vol.Schema({
+                vol.Required("medication_id"): vol.In({med["id"]: med["name"] for med in meds}),
+            }),
         )
 
     # ------------------------------------------------------------------
@@ -391,7 +403,7 @@ class MedicationOptionsFlow(OptionsFlow):
                 {
                     vol.Required(CONF_MED_NAME): str,
                     vol.Optional(CONF_MED_DOSE, default=""): str,
-                    vol.Required(CONF_MED_TYPE, default=MED_TYPE_SCHEDULED): vol.In(
+                    vol.Required(CONF_MED_TYPE, default=MED_TYPE_SCHEDULED): await async_select(self.hass, self.context, "med_type",
                         {
                             MED_TYPE_SCHEDULED: "Scheduled (regular times)",
                             MED_TYPE_AS_NEEDED: "As-needed",
@@ -524,7 +536,7 @@ class MedicationOptionsFlow(OptionsFlow):
                 {
                     vol.Required(CONF_MED_NAME, default=med["name"]): str,
                     vol.Optional(CONF_MED_DOSE, default=med.get("dose", "")): str,
-                    vol.Required(CONF_MED_TYPE, default=med.get("med_type", MED_TYPE_SCHEDULED)): vol.In(
+                    vol.Required(CONF_MED_TYPE, default=med.get("med_type", MED_TYPE_SCHEDULED)): await async_select(self.hass, self.context, "med_type",
                         {
                             MED_TYPE_SCHEDULED: "Scheduled (regular times)",
                             MED_TYPE_AS_NEEDED: "As-needed",
@@ -795,7 +807,7 @@ class MedicationOptionsFlow(OptionsFlow):
                         CONF_NOTIF_LOW_STOCK_ENABLED,
                         default=cfg.get(CONF_NOTIF_LOW_STOCK_ENABLED, False),
                     ): bool,
-                    vol.Required("action", default="save"): vol.In(action_labels),
+                    vol.Required("action", default="save"): await async_select(self.hass, self.context, "notification_action", action_labels),
                 }
             ),
         )
@@ -842,7 +854,7 @@ class MedicationOptionsFlow(OptionsFlow):
                             cfg, CONF_NOTIF_DUE_MESSAGE, self.hass.config.language
                         ),
                     ): str,
-                    **_sound_schema_fields("due", cfg),
+                    **(await _sound_schema_fields("due", cfg, self.hass, self.context)),
                 }
             ),
         )
@@ -893,7 +905,7 @@ class MedicationOptionsFlow(OptionsFlow):
                             cfg, CONF_NOTIF_OVERDUE_MESSAGE, self.hass.config.language
                         ),
                     ): str,
-                    **_sound_schema_fields("overdue", cfg),
+                    **(await _sound_schema_fields("overdue", cfg, self.hass, self.context)),
                 }
             ),
         )
@@ -944,7 +956,7 @@ class MedicationOptionsFlow(OptionsFlow):
                             cfg, CONF_NOTIF_DUE_SOON_MESSAGE, self.hass.config.language
                         ),
                     ): str,
-                    **_sound_schema_fields("due_soon", cfg),
+                    **(await _sound_schema_fields("due_soon", cfg, self.hass, self.context)),
                 }
             ),
         )
@@ -993,7 +1005,7 @@ class MedicationOptionsFlow(OptionsFlow):
                             cfg, CONF_NOTIF_TAKEN_MESSAGE, self.hass.config.language
                         ),
                     ): str,
-                    **_sound_schema_fields("taken", cfg),
+                    **(await _sound_schema_fields("taken", cfg, self.hass, self.context)),
                 }
             ),
         )
@@ -1030,6 +1042,7 @@ class MedicationOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="notification_low_stock_message",
+            description_placeholders={"stock": "{stock}"},
             data_schema=vol.Schema(
                 {
                     vol.Optional(
@@ -1044,7 +1057,7 @@ class MedicationOptionsFlow(OptionsFlow):
                             cfg, CONF_NOTIF_LOW_STOCK_MESSAGE, self.hass.config.language
                         ),
                     ): str,
-                    **_sound_schema_fields("low_stock", cfg),
+                    **(await _sound_schema_fields("low_stock", cfg, self.hass, self.context)),
                 }
             ),
         )

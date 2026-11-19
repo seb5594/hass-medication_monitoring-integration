@@ -123,6 +123,8 @@ class MedicationBaseSensor(CoordinatorEntity[MedicationCoordinator], SensorEntit
         super().__init__(coordinator)
         self._med_id = med_id
         self._entry_id = entry_id
+        self._role = suffix
+        self._attr_translation_key = self._role
         self._attr_unique_id = f"{entry_id}_{med_id}_{suffix}"
         self._attr_device_info = DeviceInfo(
             entry_type=DeviceEntryType.SERVICE,
@@ -130,6 +132,20 @@ class MedicationBaseSensor(CoordinatorEntity[MedicationCoordinator], SensorEntit
             name=self._med_name,
             manufacturer="Medication Monitoring",
         )
+
+    @property
+    def _medication_attributes(self):
+        return {
+            "tracker_domain": DOMAIN,
+            "tracker_entry_id": self._entry_id,
+            "medication_id": self._med_id,
+            "medication_name": self._med_name,
+            "medication_role": self._role,
+        }
+
+    @property
+    def extra_state_attributes(self):
+        return self._medication_attributes
 
     @property
     def _med_name(self) -> str:
@@ -165,7 +181,7 @@ class MedicationNextDoseSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Next Dose")
+        return entity_name(self._med_name, "Next Dose", self)
 
     @property
     def native_value(self) -> datetime | None:
@@ -178,6 +194,7 @@ class MedicationNextDoseSensor(MedicationBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             "tracker_domain": DOMAIN,
             ATTR_TIMES: data.get(ATTR_TIMES, []),
             ATTR_SCHEDULED_TIME: data.get("next_dose_time"),
@@ -204,7 +221,7 @@ class MedicationLastTakenSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Last Taken")
+        return entity_name(self._med_name, "Last Taken", self)
 
     @property
     def native_value(self) -> datetime | None:
@@ -217,6 +234,7 @@ class MedicationLastTakenSensor(MedicationBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             ATTR_TAKEN_TODAY: data.get(ATTR_TAKEN_TODAY, 0),
             ATTR_SKIPPED_TODAY: data.get(ATTR_SKIPPED_TODAY, 0),
             ATTR_DOSE: data.get(ATTR_DOSE, ""),
@@ -242,7 +260,7 @@ class MedicationStreakSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Streak")
+        return entity_name(self._med_name, "Streak", self)
 
     @property
     def native_value(self) -> int:
@@ -278,7 +296,7 @@ class MedicationTakenTodaySensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Taken Today")
+        return entity_name(self._med_name, "Taken Today", self)
 
     @property
     def native_value(self) -> int:
@@ -288,6 +306,7 @@ class MedicationTakenTodaySensor(MedicationBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             "doses_scheduled_today": data.get("doses_scheduled_today", 0),
             ATTR_SKIPPED_TODAY: data.get(ATTR_SKIPPED_TODAY, 0),
             "scheduled_today": data.get("scheduled_today", True),
@@ -312,7 +331,7 @@ class MedicationNextAvailableSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Next Available")
+        return entity_name(self._med_name, "Next Available", self)
 
     @property
     def native_value(self) -> datetime | None:
@@ -325,6 +344,7 @@ class MedicationNextAvailableSensor(MedicationBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             "tracker_domain": DOMAIN,
             "is_available": data.get("is_available", True),
             "doses_taken_today": data.get("doses_taken_today", 0),
@@ -356,7 +376,7 @@ class MedicationStockSensor(MedicationBaseSensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Stock")
+        return entity_name(self._med_name, "Stock", self)
 
     @property
     def native_value(self) -> float | None:
@@ -369,6 +389,7 @@ class MedicationStockSensor(MedicationBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             "stock_tracking_enabled": data.get("stock_tracking_enabled", False),
             "stock_per_dose": data.get("stock_per_dose"),
             "stock_low_threshold": data.get("stock_low_threshold"),
