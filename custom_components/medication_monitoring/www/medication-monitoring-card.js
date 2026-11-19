@@ -51,14 +51,14 @@ const TRANSLATIONS = {
     availability_daily_limit: "Tageslimit erreicht",
     availability_next: "Nächste Einnahme möglich {when}",
     label_next_dose: "Nächste Einnahme",
-    label_last_taken: "Zuletzt genommen",
+    label_last_taken: "Zuletzt eingenommen",
     label_streak: "Serie",
-    label_taken_today: "Heute genommen",
+    label_taken_today: "Heute eingenommen",
     label_availability: "Verfügbarkeit",
     label_stock: "Vorrat",
     streak_days_one: "{count} Tag",
     streak_days_other: "{count} Tage",
-    action_mark_taken: "Als genommen markieren",
+    action_mark_taken: "Als eingenommen markieren",
     action_skip: "Überspringen",
     action_top_up: "Vorrat auffüllen",
     time_in_minutes: "in {minutes} Min.",
@@ -92,8 +92,8 @@ class MedicationTrackerCard extends HTMLElement {
   // Uses the language of the HA user profile, reduced to its base tag
   // ("de-AT" -> "de"). Unsupported languages fall back to English.
   _resolveLanguage(hass) {
-    const tag = hass.locale?.language || hass.language || DEFAULT_LANGUAGE;
-    const base = tag.split("-")[0].toLowerCase();
+    const tag = hass.language || hass.locale?.language || DEFAULT_LANGUAGE;
+    const base = tag.replace(/_/g, "-").split("-")[0].toLowerCase();
     return TRANSLATIONS[base] ? base : DEFAULT_LANGUAGE;
   }
 
@@ -109,6 +109,11 @@ class MedicationTrackerCard extends HTMLElement {
   _findEntityId(base, domain, suffix, deviceEntityIds) {
     const states = this._hass.states;
     if (deviceEntityIds) {
+      const role = domain === "number" && suffix === "stock" ? "stock_number" : suffix;
+      const identified = deviceEntityIds.find(
+        (eid) => eid.startsWith(`${domain}.`) && states[eid]?.attributes.medication_role === role
+      );
+      if (identified) return identified;
       const match = deviceEntityIds.find(
         (eid) => eid.startsWith(`${domain}.`) && eid.replace(/_\d+$/, "").endsWith(`_${suffix}`)
       );
@@ -121,9 +126,12 @@ class MedicationTrackerCard extends HTMLElement {
   _buildMed(entityId, state, stripSuffix, nameStripRegex, medType, byDevice) {
     const states = this._hass.states;
     const base = entityId.replace("sensor.", "").replace(stripSuffix, "");
-    const friendlyBase = state.attributes.friendly_name?.replace(nameStripRegex, "") || base;
     const registryEntry = this._hass.entities && this._hass.entities[entityId];
-    const deviceEntityIds = registryEntry && byDevice[registryEntry.device_id];
+    const identity = `${state.attributes.tracker_entry_id}:${state.attributes.medication_id}`;
+    const deviceEntityIds = byDevice[`med:${identity}`] || (registryEntry && byDevice[registryEntry.device_id]);
+    const device = registryEntry && this._hass.devices?.[registryEntry.device_id];
+    const friendlyBase = state.attributes.medication_name || device?.name_by_user || device?.name ||
+      state.attributes.friendly_name?.replace(nameStripRegex, "") || base;
 
     const get = (domain, suffix) => {
       const eid = this._findEntityId(base, domain, suffix, deviceEntityIds);
@@ -169,28 +177,36 @@ class MedicationTrackerCard extends HTMLElement {
     // medication can be found even if their entity_id doesn't match the
     // "<base>_<suffix>" pattern guessed from another entity's id.
     const byDevice = {};
+    for (const [eid, state] of Object.entries(states)) {
+      const attrs = state.attributes;
+      if (attrs.tracker_domain !== "medication_monitoring" || !attrs.tracker_entry_id || !attrs.medication_id) continue;
+      const key = `med:${attrs.tracker_entry_id}:${attrs.medication_id}`;
+      (byDevice[key] ??= []).push(eid);
+    }
     for (const [eid, ent] of Object.entries(entities)) {
       if (!ent || !ent.device_id) continue;
       (byDevice[ent.device_id] ??= []).push(eid);
     }
 
     const nextDoseSensors = Object.entries(states).filter(
-      ([id, state]) => id.startsWith("sensor.") && /_next_dose(?:_\d+)?$/.test(id) &&
+      ([id, state]) => id.startsWith("sensor.") &&
+        (state.attributes.medication_role ? state.attributes.medication_role === "next_dose" : /_next_dose(?:_\d+)?$/.test(id)) &&
         state.attributes.tracker_domain === "medication_monitoring"
     );
 
     // Also find PRN medications via next_available sensors
     const nextAvailableSensors = Object.entries(states).filter(
-      ([id, state]) => id.startsWith("sensor.") && /_next_available(?:_\d+)?$/.test(id) &&
+      ([id, state]) => id.startsWith("sensor.") &&
+        (state.attributes.medication_role ? state.attributes.medication_role === "next_available" : /_next_available(?:_\d+)?$/.test(id)) &&
         state.attributes.tracker_domain === "medication_monitoring"
     );
 
     const scheduledMeds = nextDoseSensors.map(([entityId, state]) =>
-      this._buildMed(entityId, state, /_next_dose(?:_\d+)?$/, /\s*Next Dose$/i, "scheduled", byDevice)
+      this._buildMed(entityId, state, /_next_dose(?:_\d+)?$/, /\s*(?:Next Dose|Nächste Einnahme)$/i, "scheduled", byDevice)
     );
 
     const asNeededMeds = nextAvailableSensors.map(([entityId, state]) =>
-      this._buildMed(entityId, state, /_next_available(?:_\d+)?$/, /\s*Next Available$/i, "as_needed", byDevice)
+      this._buildMed(entityId, state, /_next_available(?:_\d+)?$/, /\s*(?:Next Available|Nächste mögliche Einnahme)$/i, "as_needed", byDevice)
     );
 
     this._medications = [...scheduledMeds, ...asNeededMeds];
@@ -205,7 +221,7 @@ class MedicationTrackerCard extends HTMLElement {
       const diffMin = Math.round((d - now) / 60000);
       if (diffMin > 0 && diffMin < 120) return this._t("time_in_minutes", { minutes: diffMin });
       if (diffMin <= 0 && diffMin > -120) return this._t("time_minutes_ago", { minutes: Math.abs(diffMin) });
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleTimeString(this._language, { hour: "2-digit", minute: "2-digit" });
     } catch { return "—"; }
   }
 

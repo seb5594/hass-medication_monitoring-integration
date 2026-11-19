@@ -94,6 +94,8 @@ class MedicationStockNumber(CoordinatorEntity[MedicationCoordinator], NumberEnti
         super().__init__(coordinator)
         self._med_id = med_id
         self._entry_id = entry_id
+        self._role = SUFFIX_STOCK_NUMBER
+        self._attr_translation_key = self._role
         self._attr_unique_id = f"{entry_id}_{med_id}_{SUFFIX_STOCK_NUMBER}"
         self._attr_device_info = DeviceInfo(
             entry_type=DeviceEntryType.SERVICE,
@@ -101,6 +103,20 @@ class MedicationStockNumber(CoordinatorEntity[MedicationCoordinator], NumberEnti
             name=self._med_name,
             manufacturer="Medication Monitoring",
         )
+
+    @property
+    def _medication_attributes(self):
+        return {
+            "tracker_domain": DOMAIN,
+            "tracker_entry_id": self._entry_id,
+            "medication_id": self._med_id,
+            "medication_name": self._med_name,
+            "medication_role": self._role,
+        }
+
+    @property
+    def extra_state_attributes(self):
+        return self._medication_attributes
 
     @property
     def _med_name(self) -> str:
@@ -113,7 +129,7 @@ class MedicationStockNumber(CoordinatorEntity[MedicationCoordinator], NumberEnti
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Stock")
+        return entity_name(self._med_name, "Stock", self)
 
     @property
     def available(self) -> bool:

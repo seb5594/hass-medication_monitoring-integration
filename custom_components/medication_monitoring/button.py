@@ -84,6 +84,8 @@ class MedicationBaseButton(ButtonEntity):
         self._coordinator = coordinator
         self._med_id = med_id
         self._entry_id = entry_id
+        self._role = suffix
+        self._attr_translation_key = self._role
         self._attr_unique_id = f"{entry_id}_{med_id}_{suffix}"
         self._attr_device_info = DeviceInfo(
             entry_type=DeviceEntryType.SERVICE,
@@ -91,6 +93,20 @@ class MedicationBaseButton(ButtonEntity):
             name=self._med_name,
             manufacturer="Medication Monitoring",
         )
+
+    @property
+    def _medication_attributes(self):
+        return {
+            "tracker_domain": DOMAIN,
+            "tracker_entry_id": self._entry_id,
+            "medication_id": self._med_id,
+            "medication_name": self._med_name,
+            "medication_role": self._role,
+        }
+
+    @property
+    def extra_state_attributes(self):
+        return self._medication_attributes
 
     @property
     def _med_name(self) -> str:
@@ -119,7 +135,7 @@ class MedicationMarkTakenButton(MedicationBaseButton):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Mark taken")
+        return entity_name(self._med_name, "Mark taken", self)
 
     async def async_press(self) -> None:
         """Handle button press — mark dose taken with correct scheduled_time."""
@@ -146,7 +162,7 @@ class MedicationMarkSkippedButton(MedicationBaseButton):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Mark skipped")
+        return entity_name(self._med_name, "Mark skipped", self)
 
     async def async_press(self) -> None:
         """Handle button press — mark dose skipped with correct scheduled_time."""

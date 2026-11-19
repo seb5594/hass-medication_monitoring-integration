@@ -39,8 +39,12 @@ def get_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> MedicationCoordi
     return hass.data.get(DOMAIN, {}).get(entry.entry_id)
 
 
-def entity_name(medication_name: str, name: str) -> str:
+def entity_name(medication_name: str, name: str, entity=None) -> str:
     """Prefix names on Core releases that do not derive them from devices."""
+    if entity is not None and hasattr(Entity, "translation_key"):
+        translated = Entity.name.__get__(entity, type(entity))
+        if isinstance(translated, str):
+            return translated
     if hasattr(Entity, "has_entity_name"):
         return name
     return f"{medication_name} {name}"

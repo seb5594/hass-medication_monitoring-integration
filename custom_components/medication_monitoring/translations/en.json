@@ -200,6 +200,12 @@
           "stock_per_dose": "Units used per dose",
           "stock_low_threshold": "Alert when stock falls to or below"
         }
+      },
+      "select_medication": {
+        "title": "Edit medication",
+        "data": {
+          "medication_id": "Medication"
+        }
       }
     },
     "error": {
@@ -207,5 +213,106 @@
       "invalid_day_format": "Invalid day format. Use mon/tue/wed/thu/fri/sat/sun, comma-separated."
     }
   },
-  "title": "Medication Monitoring"
+  "title": "Medication Monitoring",
+  "selector": {
+    "manage_action": {
+      "options": {
+        "add": "Add medication",
+        "edit": "Edit medication",
+        "remove": "Remove medication",
+        "notifications": "Notifications",
+        "done": "Save and finish"
+      }
+    },
+    "notification_action": {
+      "options": {
+        "save": "Save and go back",
+        "edit_due_message": "Edit due now message",
+        "edit_overdue_message": "Edit overdue message",
+        "edit_due_soon_message": "Edit due soon message",
+        "edit_taken_message": "Edit taken confirmation",
+        "edit_low_stock_message": "Edit low stock message",
+        "per_medication": "Per-medication overrides"
+      }
+    },
+    "med_type": {
+      "options": {
+        "scheduled": "Scheduled (regular times)",
+        "as_needed": "As needed"
+      }
+    },
+    "ios_sound_mode": {
+      "options": {
+        "default": "Default (device notification sound)",
+        "critical": "Critical — bypasses mute and Do Not Disturb",
+        "time_sensitive": "Time-sensitive — plays a sound",
+        "none": "No sound"
+      }
+    },
+    "android_sound_mode": {
+      "options": {
+        "default": "Default (device notification sound)",
+        "critical": "Critical — dedicated high-priority channel",
+        "none": "No sound"
+      }
+    },
+    "android_importance": {
+      "options": {
+        "min": "Minimum",
+        "low": "Low",
+        "default": "Default",
+        "high": "High",
+        "max": "Maximum"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_dose": {
+        "name": "Next Dose"
+      },
+      "last_taken": {
+        "name": "Last Taken"
+      },
+      "streak": {
+        "name": "Streak"
+      },
+      "taken_today": {
+        "name": "Taken Today"
+      },
+      "next_available": {
+        "name": "Next Available"
+      },
+      "stock": {
+        "name": "Stock"
+      }
+    },
+    "binary_sensor": {
+      "overdue": {
+        "name": "Overdue"
+      },
+      "due_soon": {
+        "name": "Due Soon"
+      },
+      "available": {
+        "name": "Available"
+      },
+      "low_stock": {
+        "name": "Low Stock"
+      }
+    },
+    "button": {
+      "mark_taken": {
+        "name": "Mark taken"
+      },
+      "mark_skipped": {
+        "name": "Mark skipped"
+      }
+    },
+    "number": {
+      "stock_number": {
+        "name": "Stock"
+      }
+    }
+  }
 }

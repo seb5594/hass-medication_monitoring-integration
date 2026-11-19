@@ -105,6 +105,8 @@ class MedicationBaseBinarySensor(CoordinatorEntity[MedicationCoordinator], Binar
         super().__init__(coordinator)
         self._med_id = med_id
         self._entry_id = entry_id
+        self._role = "due_soon" if suffix == SUFFIX_DUE else suffix
+        self._attr_translation_key = self._role
         self._attr_unique_id = f"{entry_id}_{med_id}_{suffix}"
         self._attr_device_info = DeviceInfo(
             entry_type=DeviceEntryType.SERVICE,
@@ -112,6 +114,20 @@ class MedicationBaseBinarySensor(CoordinatorEntity[MedicationCoordinator], Binar
             name=self._med_name,
             manufacturer="Medication Monitoring",
         )
+
+    @property
+    def _medication_attributes(self):
+        return {
+            "tracker_domain": DOMAIN,
+            "tracker_entry_id": self._entry_id,
+            "medication_id": self._med_id,
+            "medication_name": self._med_name,
+            "medication_role": self._role,
+        }
+
+    @property
+    def extra_state_attributes(self):
+        return self._medication_attributes
 
     @property
     def _med_name(self) -> str:
@@ -146,7 +162,7 @@ class MedicationOverdueSensor(MedicationBaseBinarySensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Overdue")
+        return entity_name(self._med_name, "Overdue", self)
 
     @property
     def is_on(self) -> bool:
@@ -160,6 +176,7 @@ class MedicationOverdueSensor(MedicationBaseBinarySensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             "overdue_since": data.get("overdue_since"),
             ATTR_DOSE: data.get(ATTR_DOSE, ""),
             ATTR_TIMES: data.get(ATTR_TIMES, []),
@@ -182,7 +199,7 @@ class MedicationDueSoonSensor(MedicationBaseBinarySensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Due Soon")
+        return entity_name(self._med_name, "Due Soon", self)
 
     @property
     def is_on(self) -> bool:
@@ -196,6 +213,7 @@ class MedicationDueSoonSensor(MedicationBaseBinarySensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             ATTR_NEXT_DOSE: data.get(ATTR_NEXT_DOSE),
             "next_dose_time": data.get("next_dose_time"),
             ATTR_DOSE: data.get(ATTR_DOSE, ""),
@@ -219,7 +237,7 @@ class MedicationAvailableSensor(MedicationBaseBinarySensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Available")
+        return entity_name(self._med_name, "Available", self)
 
     @property
     def is_on(self) -> bool:
@@ -233,6 +251,7 @@ class MedicationAvailableSensor(MedicationBaseBinarySensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             "next_available": data.get("next_available"),
             "doses_taken_today": data.get("doses_taken_today", 0),
             "doses_taken_24h": data.get("doses_taken_24h", 0),
@@ -257,7 +276,7 @@ class MedicationLowStockSensor(MedicationBaseBinarySensor):
 
     @property
     def name(self) -> str:
-        return entity_name(self._med_name, "Low Stock")
+        return entity_name(self._med_name, "Low Stock", self)
 
     @property
     def is_on(self) -> bool:
@@ -271,6 +290,7 @@ class MedicationLowStockSensor(MedicationBaseBinarySensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self._state_data
         return {
+            **self._medication_attributes,
             ATTR_CURRENT_STOCK: data.get(ATTR_CURRENT_STOCK),
             "stock_low_threshold": data.get("stock_low_threshold"),
             ATTR_DOSE: data.get(ATTR_DOSE, ""),

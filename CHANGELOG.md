@@ -5,6 +5,13 @@ number for the day.
 
 ## Unreleased
 
+- Correct translated management, medication-type, and notification-sound selections in the options
+  flow; use native selector translations and retain a fallback for older Home Assistant releases.
+- Translate entity names and identify card entities by medication identity and role, so translated
+  or renamed entity IDs keep the correct status, stock, and action buttons.
+- Follow the dashboard user's language, including regional German tags, and preserve the literal
+  `{stock}` example in the low-stock template editor.
+
 - Detect Medication Tracker profiles from the original project and previous fork during setup,
   including active profiles and saved stores left behind after uninstalling the old integration.
 - Preview medications before importing; disable a running source only after confirmation to
