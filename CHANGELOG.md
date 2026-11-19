@@ -2,9 +2,12 @@
 
 New versions use `YYYY.MM.DD.BUILD`: four-digit year, two-digit month and day, followed by
 a non-negative build number starting at `0` for each day (for example, `2026.02.03.0`).
+Release tags and titles use the version without a `v` prefix.
 Existing releases retain their original version numbers.
 
 ## 2026.11.19.0
+
+- Publish the release tag and title without a leading `v`.
 
 - Enforce the `YYYY.MM.DD.BUILD` release format, including zero-padded months and days.
 
