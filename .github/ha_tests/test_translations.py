@@ -61,7 +61,7 @@ async def test_entities_expose_language_independent_roles_and_german_names(hass,
             "stock_number", "mark_taken", "mark_skipped", "overdue", "due_soon", "low_stock"} <= by_role.keys()
     assert all(state.attributes["medication_name"] == "Vitamin D" for state in states)
     # Older HA does not support translated entity names; the card still uses the stable roles.
-    from homeassistant.helpers.entity import Entity
-    if hasattr(Entity, "translation_key"):
+    from homeassistant.const import __version__
+    if tuple(int(part) for part in __version__.split(".")[:2]) >= (2023, 6):
         assert "Nächste Einnahme" in by_role["next_dose"].attributes["friendly_name"]
         assert "Als eingenommen markieren" in by_role["mark_taken"].attributes["friendly_name"]
