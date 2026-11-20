@@ -18,5 +18,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/seb5594/hass-medication_monitoring-integration/issues",
   "requirements": [],
-  "version": "2026.11.19.0"
+  "version": "2026.11.20"
 }
